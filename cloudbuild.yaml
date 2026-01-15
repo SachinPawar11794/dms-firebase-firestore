@@ -1,22 +1,24 @@
-# Cloud Build configuration for Cloud Run deployment
+# Cloud Build configuration for complete deployment (Backend + Frontend)
 steps:
+  # ============================================
+  # STEP 1-3: Backend Deployment (Cloud Run)
+  # ============================================
+  
   # Build Docker image (TypeScript compilation happens inside Dockerfile)
-  # Using 'latest' tag for simplicity (always works)
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '-t'
       - 'gcr.io/$PROJECT_ID/dms-api:latest'
       - '.'
-  
+
   # Push Docker image to Container Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
       - 'gcr.io/$PROJECT_ID/dms-api:latest'
-  
+
   # Deploy to Cloud Run
-  # Use 'latest' tag for deployment (always available)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -42,9 +44,62 @@ steps:
       - '300'
       - '--set-env-vars'
       - 'NODE_ENV=production,FIREBASE_PROJECT_ID=$PROJECT_ID'
+    id: 'deploy-backend'
+
+  # ============================================
+  # STEP 4: Get API URL and create .env.production
+  # ============================================
+  
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        API_URL=$(gcloud run services describe dms-api --platform managed --region asia-south1 --format 'value(status.url)' --project $PROJECT_ID)
+        echo "API URL: $API_URL"
+        echo "VITE_API_BASE_URL=$API_URL" > frontend/.env.production
+        echo "✅ Created frontend/.env.production with API URL: $API_URL"
+    id: 'get-api-url'
+    waitFor: ['deploy-backend']
+
+  # ============================================
+  # STEP 5: Build Frontend
+  # ============================================
+  
+  - name: 'node:18'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        cd frontend
+        npm ci
+        npm run build
+        echo "✅ Frontend build completed"
+    id: 'build-frontend'
+    waitFor: ['get-api-url']
+
+  # ============================================
+  # STEP 6: Deploy Frontend to Firebase Hosting
+  # ============================================
+  
+  - name: 'node:18'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        npm install -g firebase-tools
+        # Use Application Default Credentials (automatically available in Cloud Build)
+        firebase use $PROJECT_ID
+        firebase deploy --only hosting --project $PROJECT_ID --force --non-interactive
+        echo "✅ Frontend deployed to Firebase Hosting"
+    id: 'deploy-frontend'
+    waitFor: ['build-frontend']
 
 images:
   - 'gcr.io/$PROJECT_ID/dms-api:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+timeout: '1800s'
