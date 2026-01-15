@@ -1,0 +1,47 @@
+{
+  "firestore": {
+    "database": "(default)",
+    "location": "asia-south1",
+    "rules": "src/config/firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "codebase": "default",
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ],
+      "source": "functions"
+    },
+    {
+      "source": "cloud-functions",
+      "codebase": "functions",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint",
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ]
+    }
+  ],
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

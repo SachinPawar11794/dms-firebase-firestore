@@ -1,0 +1,379 @@
+{
+  "info": {
+    "name": "DMS Firebase Firestore API",
+    "description": "API collection for DMS application",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", "me"]
+            }
+          }
+        },
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users?page=1&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "userId"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Employee Task Manager",
+      "item": [
+        {
+          "name": "Create Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Complete project documentation\",\n  \"description\": \"Write comprehensive documentation for the project\",\n  \"assignedTo\": \"userId\",\n  \"assignedBy\": \"userId\",\n  \"priority\": \"high\",\n  \"dueDate\": \"2024-12-31T23:59:59Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/employee-task-manager/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "employee-task-manager", "tasks"]
+            }
+          }
+        },
+        {
+          "name": "Get All Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/employee-task-manager/tasks?page=1&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "employee-task-manager", "tasks"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Task Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in-progress\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/employee-task-manager/tasks/:id/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "employee-task-manager", "tasks", ":id", "status"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "taskId"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "PMS",
+      "item": [
+        {
+          "name": "Create Production",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productName\": \"Widget A\",\n  \"quantity\": 100,\n  \"unit\": \"pieces\",\n  \"productionDate\": \"2024-12-31T00:00:00Z\",\n  \"assignedTeam\": [\"userId1\", \"userId2\"],\n  \"notes\": \"High priority order\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pms/productions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "pms", "productions"]
+            }
+          }
+        },
+        {
+          "name": "Get All Productions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pms/productions?page=1&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "pms", "productions"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Human Resource",
+      "item": [
+        {
+          "name": "Create Employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employeeId\": \"EMP001\",\n  \"personalInfo\": {\n    \"firstName\": \"John\",\n    \"lastName\": \"Doe\",\n    \"email\": \"john.doe@example.com\",\n    \"phone\": \"+1234567890\",\n    \"address\": {\n      \"street\": \"123 Main St\",\n      \"city\": \"New York\",\n      \"state\": \"NY\",\n      \"zipCode\": \"10001\",\n      \"country\": \"USA\"\n    },\n    \"dateOfBirth\": \"1990-01-01T00:00:00Z\"\n  },\n  \"employmentInfo\": {\n    \"department\": \"Engineering\",\n    \"position\": \"Software Engineer\",\n    \"hireDate\": \"2024-01-01T00:00:00Z\",\n    \"salary\": 75000,\n    \"employmentType\": \"full-time\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/human-resource/employees",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "human-resource", "employees"]
+            }
+          }
+        },
+        {
+          "name": "Create Attendance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employeeId\": \"employeeId\",\n  \"date\": \"2024-01-15T00:00:00Z\",\n  \"checkIn\": \"2024-01-15T09:00:00Z\",\n  \"checkOut\": \"2024-01-15T17:00:00Z\",\n  \"status\": \"present\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/human-resource/employees/attendance",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "human-resource", "employees", "attendance"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Maintenance",
+      "item": [
+        {
+          "name": "Create Maintenance Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Repair conveyor belt\",\n  \"description\": \"Conveyor belt is making unusual noise\",\n  \"equipmentId\": \"equipmentId\",\n  \"equipmentName\": \"Conveyor Belt #3\",\n  \"priority\": \"high\",\n  \"scheduledDate\": \"2024-01-20T10:00:00Z\",\n  \"notes\": \"Urgent repair needed\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/maintenance/requests",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "maintenance", "requests"]
+            }
+          }
+        },
+        {
+          "name": "Create Equipment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Conveyor Belt #3\",\n  \"type\": \"Conveyor System\",\n  \"serialNumber\": \"CB-2024-003\",\n  \"location\": \"Production Floor A\",\n  \"warrantyExpiry\": \"2025-12-31T00:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/maintenance/equipment",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "maintenance", "equipment"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

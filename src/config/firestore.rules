@@ -1,0 +1,134 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Helper function to get user permissions (simplified - in production, use a more robust method)
+    function getUserPermissions() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.modulePermissions;
+    }
+    
+    // Helper function to check module permission
+    function hasModulePermission(module, permission) {
+      let userPerms = getUserPermissions();
+      return userPerms != null && 
+             userPerms[module] != null && 
+             permission in userPerms[module];
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(userId) || hasModulePermission('humanResource', 'read'));
+      allow create: if isAuthenticated() && 
+                       (isOwner(userId) || hasModulePermission('humanResource', 'write'));
+      allow update: if isAuthenticated() && 
+                       (isOwner(userId) || hasModulePermission('humanResource', 'write'));
+      allow delete: if isAuthenticated() && 
+                       hasModulePermission('humanResource', 'delete');
+    }
+    
+    // Employee Task Manager - Tasks collection
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated() && 
+                     (hasModulePermission('employeeTaskManager', 'read') ||
+                      resource.data.assignedTo == request.auth.uid ||
+                      resource.data.assignedBy == request.auth.uid);
+      allow create: if isAuthenticated() && 
+                       hasModulePermission('employeeTaskManager', 'write');
+      allow update: if isAuthenticated() && 
+                       (hasModulePermission('employeeTaskManager', 'write') ||
+                        (resource.data.assignedTo == request.auth.uid && 
+                         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['assignedTo', 'assignedBy'])));
+      allow delete: if isAuthenticated() && 
+                       hasModulePermission('employeeTaskManager', 'delete');
+    }
+    
+    // PMS - Productions collection
+    match /productions/{productionId} {
+      allow read: if isAuthenticated() && 
+                     hasModulePermission('pms', 'read');
+      allow create: if isAuthenticated() && 
+                       hasModulePermission('pms', 'write');
+      allow update: if isAuthenticated() && 
+                       hasModulePermission('pms', 'write');
+      allow delete: if isAuthenticated() && 
+                       hasModulePermission('pms', 'delete');
+    }
+    
+    // PMS - Production Orders collection
+    match /productionOrders/{orderId} {
+      allow read: if isAuthenticated() && 
+                     hasModulePermission('pms', 'read');
+      allow create: if isAuthenticated() && 
+                       hasModulePermission('pms', 'write');
+      allow update: if isAuthenticated() && 
+                       hasModulePermission('pms', 'write');
+      allow delete: if isAuthenticated() && 
+                       hasModulePermission('pms', 'delete');
+    }
+    
+    // Human Resource - Employees collection
+    match /employees/{employeeId} {
+      allow read: if isAuthenticated() && 
+                     hasModulePermission('humanResource', 'read');
+      allow create: if isAuthenticated() && 
+                       hasModulePermission('humanResource', 'write');
+      allow update: if isAuthenticated() && 
+                       hasModulePermission('humanResource', 'write');
+      allow delete: if isAuthenticated() && 
+                       hasModulePermission('humanResource', 'delete');
+    }
+    
+    // Human Resource - Attendance collection
+    match /attendance/{attendanceId} {
+      allow read: if isAuthenticated() && 
+                     (hasModulePermission('humanResource', 'read') ||
+                      resource.data.employeeId == request.auth.uid);
+      allow create: if isAuthenticated() && 
+                       (hasModulePermission('humanResource', 'write') ||
+                        request.resource.data.employeeId == request.auth.uid);
+      allow update: if isAuthenticated() && 
+                       hasModulePermission('humanResource', 'write');
+      allow delete: if isAuthenticated() && 
+                       hasModulePermission('humanResource', 'delete');
+    }
+    
+    // Maintenance - Requests collection
+    match /maintenanceRequests/{requestId} {
+      allow read: if isAuthenticated() && 
+                     (hasModulePermission('maintenance', 'read') ||
+                      resource.data.requestedBy == request.auth.uid ||
+                      resource.data.assignedTo == request.auth.uid);
+      allow create: if isAuthenticated() && 
+                       hasModulePermission('maintenance', 'write');
+      allow update: if isAuthenticated() && 
+                       (hasModulePermission('maintenance', 'write') ||
+                        (resource.data.assignedTo == request.auth.uid && 
+                         request.resource.data.status == 'completed'));
+      allow delete: if isAuthenticated() && 
+                       hasModulePermission('maintenance', 'delete');
+    }
+    
+    // Maintenance - Equipment collection
+    match /equipment/{equipmentId} {
+      allow read: if isAuthenticated() && 
+                     hasModulePermission('maintenance', 'read');
+      allow create: if isAuthenticated() && 
+                       hasModulePermission('maintenance', 'write');
+      allow update: if isAuthenticated() && 
+                       hasModulePermission('maintenance', 'write');
+      allow delete: if isAuthenticated() && 
+                       hasModulePermission('maintenance', 'delete');
+    }
+  }
+}

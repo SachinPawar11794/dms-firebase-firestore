@@ -1,0 +1,46 @@
+# Files to exclude from Cloud Build upload
+# This ensures important files ARE included
+
+# Exclude node_modules (will be installed during build)
+node_modules/
+frontend/node_modules/
+cloud-functions/node_modules/
+
+# Exclude build outputs (will be built during build)
+dist/
+frontend/dist/
+frontend/build/
+*.tsbuildinfo
+
+# Exclude environment files
+.env
+.env.local
+.env.*.local
+serviceAccountKey.json
+
+# Exclude IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Exclude logs
+*.log
+logs/
+npm-debug.log*
+
+# Exclude coverage
+coverage/
+.nyc_output
+
+# Exclude git
+.git/
+.gitignore
+
+# Exclude firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+
+# Note: package-lock.json IS included (not listed here)
+# This ensures npm install works correctly
