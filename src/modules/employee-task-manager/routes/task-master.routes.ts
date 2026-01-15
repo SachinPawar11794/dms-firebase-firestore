@@ -8,6 +8,7 @@ import {
   stringValidation,
   optionalStringValidation,
   enumValidation,
+  dateValidation,
 } from '../../../utils/validators';
 import { body } from 'express-validator';
 
@@ -27,12 +28,8 @@ const createTaskMasterValidation = [
   enumValidation('frequency', ['daily', 'weekly', 'monthly', 'quarterly', 'yearly', 'custom']),
   body('frequencyValue').optional().isInt({ allow_leading_zeroes: false }).withMessage('frequencyValue must be a number'),
   body('frequencyUnit').optional().isIn(['days', 'weeks', 'months']).withMessage('frequencyUnit must be days, weeks, or months'),
-  body('estimatedDuration').optional().custom((value) => {
-    if (value === '' || value === null || value === undefined) return true;
-    const num = parseInt(value);
-    return !isNaN(num) && num > 0;
-  }).withMessage('estimatedDuration must be a positive number'),
-  body('startDate').optional().isISO8601().withMessage('startDate must be a valid ISO 8601 date'),
+  body('estimatedDuration').isInt({ min: 1 }).withMessage('estimatedDuration is required and must be a positive number (minimum 1 minute)'),
+  dateValidation('startDate'), // Required field - when task generation should begin
   optionalStringValidation('instructions', 2000),
 ];
 

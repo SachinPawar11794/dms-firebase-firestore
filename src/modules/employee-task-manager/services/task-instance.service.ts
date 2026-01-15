@@ -34,8 +34,9 @@ export class TaskInstanceService {
         scheduledDate,
         dueDate,
         tags: taskMaster.tags || [],
-        estimatedDuration: taskMaster.estimatedDuration,
-        instructions: taskMaster.instructions,
+        estimatedDuration: taskMaster.estimatedDuration, // Required field
+        // Only include instructions if it exists
+        ...(taskMaster.instructions ? { instructions: taskMaster.instructions } : {}),
         createdAt: now,
         updatedAt: now,
         createdBy,

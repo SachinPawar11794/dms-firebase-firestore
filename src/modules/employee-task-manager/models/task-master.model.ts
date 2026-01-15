@@ -14,10 +14,10 @@ export interface TaskMaster {
   frequency: TaskFrequency;
   frequencyValue?: number; // For custom frequency (e.g., every 3 days)
   frequencyUnit?: 'days' | 'weeks' | 'months'; // For custom frequency
-  startDate?: Timestamp; // When the recurring task should start generating
+  startDate: Timestamp; // Required: When the recurring task should start generating
   isActive: boolean;
   tags?: string[];
-  estimatedDuration?: number; // in minutes
+  estimatedDuration: number; // Required: Estimated time in minutes
   instructions?: string; // Detailed instructions for the task
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -35,9 +35,9 @@ export interface CreateTaskMasterDto {
   frequency: TaskFrequency;
   frequencyValue?: number;
   frequencyUnit?: 'days' | 'weeks' | 'months';
-  startDate?: Date | string; // When the recurring task should start generating
+  startDate: Date | string; // Required: When the recurring task should start generating
   tags?: string[];
-  estimatedDuration?: number;
+  estimatedDuration: number; // Required: Estimated time in minutes
   instructions?: string;
 }
 

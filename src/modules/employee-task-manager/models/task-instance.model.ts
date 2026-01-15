@@ -17,7 +17,7 @@ export interface TaskInstance {
   tags?: string[];
   attachments?: string[]; // Storage URLs
   notes?: string; // User can add notes when completing
-  estimatedDuration?: number; // Copied from master
+  estimatedDuration: number; // Required: Copied from master (in minutes)
   actualDuration?: number; // Actual time taken (in minutes)
   instructions?: string; // Copied from master
   createdAt: Timestamp;

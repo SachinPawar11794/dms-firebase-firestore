@@ -13,6 +13,11 @@ export class TaskMasterService {
         throw new Error('Missing required fields: title, description, plantId, assignedTo, and assignedBy are required');
       }
 
+      // Validate startDate is provided (required field)
+      if (!taskMasterData.startDate) {
+        throw new Error('startDate is required: Task generation start date must be provided');
+      }
+
       // Build task master object, only including defined values (Firestore doesn't allow undefined)
       const taskMaster: any = {
         title: taskMasterData.title.trim(),
@@ -39,18 +44,17 @@ export class TaskMasterService {
         }
       }
 
-      // Handle startDate
-      if (taskMasterData.startDate) {
-        const startDate = taskMasterData.startDate instanceof Date
-          ? Timestamp.fromDate(taskMasterData.startDate)
-          : Timestamp.fromDate(new Date(taskMasterData.startDate));
-        taskMaster.startDate = startDate;
-      }
+      // Handle startDate (required field)
+      const startDate = taskMasterData.startDate instanceof Date
+        ? Timestamp.fromDate(taskMasterData.startDate)
+        : Timestamp.fromDate(new Date(taskMasterData.startDate));
+      taskMaster.startDate = startDate;
 
-      // Only include optional fields if they have values
-      if (taskMasterData.estimatedDuration !== undefined && taskMasterData.estimatedDuration !== null && taskMasterData.estimatedDuration > 0) {
-        taskMaster.estimatedDuration = taskMasterData.estimatedDuration;
+      // Validate and set estimatedDuration (required field)
+      if (!taskMasterData.estimatedDuration || taskMasterData.estimatedDuration <= 0) {
+        throw new Error('estimatedDuration is required and must be greater than 0');
       }
+      taskMaster.estimatedDuration = taskMasterData.estimatedDuration;
 
       if (taskMasterData.instructions && taskMasterData.instructions.trim()) {
         taskMaster.instructions = taskMasterData.instructions.trim();
@@ -102,10 +106,45 @@ export class TaskMasterService {
         return null;
       }
 
-      return {
+      const data = taskMasterDoc.data() as any;
+      
+      // Convert Timestamp fields to ISO strings
+      const taskMaster: any = {
         id: taskMasterDoc.id,
-        ...(taskMasterDoc.data() as Omit<TaskMaster, 'id'>),
+        ...data,
       };
+
+      // Convert startDate Timestamp to ISO string
+      if (data.startDate && data.startDate.toDate) {
+        taskMaster.startDate = data.startDate.toDate().toISOString();
+      } else if (data.startDate instanceof Timestamp) {
+        taskMaster.startDate = data.startDate.toDate().toISOString();
+      }
+
+      // Convert createdAt Timestamp to ISO string
+      if (data.createdAt && data.createdAt.toDate) {
+        taskMaster.createdAt = data.createdAt.toDate().toISOString();
+      } else if (data.createdAt instanceof Timestamp) {
+        taskMaster.createdAt = data.createdAt.toDate().toISOString();
+      }
+
+      // Convert updatedAt Timestamp to ISO string
+      if (data.updatedAt && data.updatedAt.toDate) {
+        taskMaster.updatedAt = data.updatedAt.toDate().toISOString();
+      } else if (data.updatedAt instanceof Timestamp) {
+        taskMaster.updatedAt = data.updatedAt.toDate().toISOString();
+      }
+
+      // Convert lastGenerated Timestamp to ISO string (if exists)
+      if (data.lastGenerated) {
+        if (data.lastGenerated.toDate) {
+          taskMaster.lastGenerated = data.lastGenerated.toDate().toISOString();
+        } else if (data.lastGenerated instanceof Timestamp) {
+          taskMaster.lastGenerated = data.lastGenerated.toDate().toISOString();
+        }
+      }
+
+      return taskMaster as TaskMaster;
     } catch (error: any) {
       logger.error('Error getting task master:', error);
       throw new Error('Failed to get task master');
@@ -145,10 +184,42 @@ export class TaskMasterService {
       const totalSnapshot = await query.count().get();
       const total = totalSnapshot.data().count;
 
-      const taskMasters: TaskMaster[] = taskMastersSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<TaskMaster, 'id'>),
-      }));
+      const taskMasters: TaskMaster[] = taskMastersSnapshot.docs.map((doc) => {
+        const data = doc.data() as any;
+        const taskMaster: any = {
+          id: doc.id,
+          ...data,
+        };
+
+        // Convert Timestamp fields to ISO strings
+        if (data.startDate && data.startDate.toDate) {
+          taskMaster.startDate = data.startDate.toDate().toISOString();
+        } else if (data.startDate instanceof Timestamp) {
+          taskMaster.startDate = data.startDate.toDate().toISOString();
+        }
+
+        if (data.createdAt && data.createdAt.toDate) {
+          taskMaster.createdAt = data.createdAt.toDate().toISOString();
+        } else if (data.createdAt instanceof Timestamp) {
+          taskMaster.createdAt = data.createdAt.toDate().toISOString();
+        }
+
+        if (data.updatedAt && data.updatedAt.toDate) {
+          taskMaster.updatedAt = data.updatedAt.toDate().toISOString();
+        } else if (data.updatedAt instanceof Timestamp) {
+          taskMaster.updatedAt = data.updatedAt.toDate().toISOString();
+        }
+
+        if (data.lastGenerated) {
+          if (data.lastGenerated.toDate) {
+            taskMaster.lastGenerated = data.lastGenerated.toDate().toISOString();
+          } else if (data.lastGenerated instanceof Timestamp) {
+            taskMaster.lastGenerated = data.lastGenerated.toDate().toISOString();
+          }
+        }
+
+        return taskMaster as TaskMaster;
+      });
 
       return { taskMasters, total };
     } catch (error: any) {
@@ -297,10 +368,42 @@ export class TaskMasterService {
         .where('isActive', '==', true)
         .get();
 
-      return snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<TaskMaster, 'id'>),
-      }));
+      return snapshot.docs.map((doc) => {
+        const data = doc.data() as any;
+        const taskMaster: any = {
+          id: doc.id,
+          ...data,
+        };
+
+        // Convert Timestamp fields to ISO strings
+        if (data.startDate && data.startDate.toDate) {
+          taskMaster.startDate = data.startDate.toDate().toISOString();
+        } else if (data.startDate instanceof Timestamp) {
+          taskMaster.startDate = data.startDate.toDate().toISOString();
+        }
+
+        if (data.createdAt && data.createdAt.toDate) {
+          taskMaster.createdAt = data.createdAt.toDate().toISOString();
+        } else if (data.createdAt instanceof Timestamp) {
+          taskMaster.createdAt = data.createdAt.toDate().toISOString();
+        }
+
+        if (data.updatedAt && data.updatedAt.toDate) {
+          taskMaster.updatedAt = data.updatedAt.toDate().toISOString();
+        } else if (data.updatedAt instanceof Timestamp) {
+          taskMaster.updatedAt = data.updatedAt.toDate().toISOString();
+        }
+
+        if (data.lastGenerated) {
+          if (data.lastGenerated.toDate) {
+            taskMaster.lastGenerated = data.lastGenerated.toDate().toISOString();
+          } else if (data.lastGenerated instanceof Timestamp) {
+            taskMaster.lastGenerated = data.lastGenerated.toDate().toISOString();
+          }
+        }
+
+        return taskMaster as TaskMaster;
+      });
     } catch (error: any) {
       logger.error('Error getting active task masters:', error);
       throw new Error('Failed to get active task masters');
