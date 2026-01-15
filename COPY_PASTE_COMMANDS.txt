@@ -1,0 +1,4 @@
+cd "D:\DMS FIREBASE FIRESTORE"
+git add .
+git commit -m "Update project: Add automatic deployment setup"
+git push origin main
