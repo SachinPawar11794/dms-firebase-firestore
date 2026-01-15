@@ -24,6 +24,7 @@
     "deep-diagnose": "powershell -ExecutionPolicy Bypass -File deep-diagnose.ps1",
     "setup:git": "powershell -ExecutionPolicy Bypass -File setup-git.ps1",
     "setup:github": "powershell -ExecutionPolicy Bypass -File setup-github-simple.ps1",
+    "setup:auto-deploy": "powershell -ExecutionPolicy Bypass -File setup-cloud-build-trigger.ps1",
     "create-admin": "ts-node scripts/create-admin-user.ts",
     "create-firestore-user": "ts-node scripts/create-firestore-user.ts",
     "verify-setup": "ts-node scripts/verify-setup.ts",
