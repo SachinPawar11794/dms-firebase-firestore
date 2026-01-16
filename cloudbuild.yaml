@@ -55,10 +55,10 @@ steps:
     args:
       - '-c'
       - |
-        API_URL=$(gcloud run services describe dms-api --platform managed --region asia-south1 --format 'value(status.url)' --project $PROJECT_ID)
-        echo "API URL: $API_URL"
-        echo "VITE_API_BASE_URL=$API_URL" > frontend/.env.production
-        echo "✅ Created frontend/.env.production with API URL: $API_URL"
+        API_URL=$$(gcloud run services describe dms-api --platform managed --region asia-south1 --format 'value(status.url)' --project $PROJECT_ID)
+        echo "API URL: $$API_URL"
+        echo "VITE_API_BASE_URL=$$API_URL" > frontend/.env.production
+        echo "✅ Created frontend/.env.production with API URL: $$API_URL"
     id: 'get-api-url'
     waitFor: ['deploy-backend']
 
