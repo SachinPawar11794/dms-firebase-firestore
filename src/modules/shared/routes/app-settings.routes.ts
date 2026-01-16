@@ -41,16 +41,17 @@ router.post(
   upload.single('logo'),
   (req, res, next) => {
     // Handle multer errors
-    if (req.fileValidationError) {
+    const fileValidationError = (req as any).fileValidationError;
+    if (fileValidationError) {
       return res.status(400).json({
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: req.fileValidationError,
+          message: fileValidationError,
         },
       });
     }
-    next();
+    return next();
   },
   appSettingsController.uploadLogo.bind(appSettingsController)
 );

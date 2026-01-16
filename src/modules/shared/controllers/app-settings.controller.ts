@@ -25,7 +25,7 @@ const upload = multer({
 });
 
 export class AppSettingsController {
-  async getAppSettings(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  async getAppSettings(_req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const settings = await appSettingsService.getAppSettings();
       

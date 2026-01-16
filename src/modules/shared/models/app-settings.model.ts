@@ -12,8 +12,8 @@ export interface AppSettings {
 }
 
 export interface UpdateAppSettingsDto {
-  companyLogoUrl?: string;
-  companyName?: string;
-  appNameShort?: string;
-  appNameLong?: string;
+  companyLogoUrl?: string | null;
+  companyName?: string | null;
+  appNameShort?: string | null;
+  appNameLong?: string | null;
 }
