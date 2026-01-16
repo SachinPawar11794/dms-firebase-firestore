@@ -123,70 +123,232 @@ const Layout = () => {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          gap: '16px',
+          gap: isMobile ? '8px' : '16px',
           zIndex: 100,
           boxShadow: 'var(--shadow)',
           height: isMobile ? '48px' : '56px',
         }}
       >
-        {/* Logo and App Name - Left side */}
-        <Link 
-          to="/dashboard" 
-          style={{ 
-            display: 'flex', 
-            alignItems: 'center',
-            gap: '10px',
-            textDecoration: 'none',
-            flexShrink: 0,
-          }}
-        >
-          {appSettings?.companyLogoUrl && (
-            <img
-              src={appSettings.companyLogoUrl}
-              alt={appSettings.companyName || 'Company Logo'}
+        {/* Mobile: Menu Button + Logo + Plant Selector | Desktop: Logo + App Name */}
+        {isMobile ? (
+          <>
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               style={{
-                height: isMobile ? '32px' : '36px',
-                width: 'auto',
-                maxWidth: isMobile ? '100px' : '120px',
-                objectFit: 'contain',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '6px',
+                display: 'flex',
+                alignItems: 'center',
                 flexShrink: 0,
               }}
-            />
-          )}
-          <span style={{ 
-            color: 'var(--text)', 
-            fontSize: isMobile ? '16px' : '18px',
-            fontWeight: '600',
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-            letterSpacing: '-0.02em',
-            lineHeight: '1.2',
-            whiteSpace: 'nowrap',
-          }}>
-            {appSettings?.appNameShort || appSettings?.companyName || 'DMS'}
-          </span>
-        </Link>
+            >
+              {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+            {/* Mobile Logo Only (no text) */}
+            <Link 
+              to="/dashboard" 
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center',
+                textDecoration: 'none',
+                flexShrink: 0,
+              }}
+            >
+              {appSettings?.companyLogoUrl ? (
+                <img
+                  src={appSettings.companyLogoUrl}
+                  alt={appSettings.companyName || 'Company Logo'}
+                  style={{
+                    height: '28px',
+                    width: 'auto',
+                    maxWidth: '80px',
+                    objectFit: 'contain',
+                  }}
+                />
+              ) : (
+                <span style={{ 
+                  color: 'var(--text)', 
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                }}>
+                  {appSettings?.appNameShort || 'DMS'}
+                </span>
+              )}
+            </Link>
+            {/* Mobile Plant Selector - Right after logo */}
+            <div style={{ 
+              position: 'relative', 
+              flexShrink: 0,
+              marginLeft: '8px',
+            }}>
+              <button
+                onClick={() => setPlantDropdownOpen(!plantDropdownOpen)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '4px',
+                  padding: '6px 10px',
+                  background: selectedPlant ? 'rgba(102, 126, 234, 0.1)' : 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  color: selectedPlant ? 'var(--primary)' : 'var(--text)',
+                  fontWeight: selectedPlant ? 600 : 400,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Building2 size={14} />
+                <span style={{ 
+                  overflow: 'hidden', 
+                  textOverflow: 'ellipsis', 
+                  whiteSpace: 'nowrap',
+                  maxWidth: '60px',
+                }}>
+                  {selectedPlant ? selectedPlant.code : 'Plant'}
+                </span>
+                <ChevronDown size={12} style={{ flexShrink: 0 }} />
+              </button>
 
-        {/* Mobile Menu Button - Only on mobile */}
-        {isMobile && (
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '8px',
+              {/* Plant Dropdown */}
+              {plantDropdownOpen && (
+                <>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      marginTop: '4px',
+                      background: 'var(--white)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px',
+                      boxShadow: 'var(--shadow-lg)',
+                      zIndex: 1000,
+                      maxHeight: '250px',
+                      overflowY: 'auto',
+                      minWidth: '120px',
+                    }}
+                  >
+                    <button
+                      onClick={() => {
+                        setSelectedPlant(null);
+                        setPlantDropdownOpen(false);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        textAlign: 'left',
+                        background: !selectedPlant ? 'rgba(102, 126, 234, 0.1)' : 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: !selectedPlant ? 'var(--primary)' : 'var(--text)',
+                        fontWeight: !selectedPlant ? 600 : 400,
+                        borderBottom: '1px solid var(--border)',
+                      }}
+                    >
+                      All Plants
+                    </button>
+                    {plants.map((plant) => (
+                      <button
+                        key={plant.id}
+                        onClick={() => {
+                          setSelectedPlant(plant);
+                          setPlantDropdownOpen(false);
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          textAlign: 'left',
+                          background: selectedPlant?.id === plant.id ? 'rgba(102, 126, 234, 0.1)' : 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          color: selectedPlant?.id === plant.id ? 'var(--primary)' : 'var(--text)',
+                          fontWeight: selectedPlant?.id === plant.id ? 600 : 400,
+                          borderBottom: '1px solid var(--border)',
+                        }}
+                      >
+                        {plant.code}
+                      </button>
+                    ))}
+                    {plants.length === 0 && (
+                      <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-light)', fontSize: '13px' }}>
+                        No active plants available
+                      </div>
+                    )}
+                  </div>
+                  {/* Click outside to close */}
+                  <div
+                    onClick={() => setPlantDropdownOpen(false)}
+                    style={{
+                      position: 'fixed',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      zIndex: 999,
+                    }}
+                  />
+                </>
+              )}
+            </div>
+          </>
+        ) : (
+          /* Desktop: Logo + App Name */
+          <Link 
+            to="/dashboard" 
+            style={{ 
               display: 'flex',
               alignItems: 'center',
+              gap: '10px',
+              textDecoration: 'none',
               flexShrink: 0,
-              marginLeft: 'auto',
             }}
           >
-            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
+            {appSettings?.companyLogoUrl && (
+              <img
+                src={appSettings.companyLogoUrl}
+                alt={appSettings.companyName || 'Company Logo'}
+                style={{
+                  height: '36px',
+                  width: 'auto',
+                  maxWidth: '120px',
+                  objectFit: 'contain',
+                  flexShrink: 0,
+                }}
+              />
+            )}
+            <span style={{ 
+              color: 'var(--text)', 
+              fontSize: '18px',
+              fontWeight: '600',
+              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+              letterSpacing: '-0.02em',
+              lineHeight: '1.2',
+              whiteSpace: 'nowrap',
+            }}>
+              {appSettings?.appNameShort || appSettings?.companyName || 'DMS'}
+            </span>
+          </Link>
         )}
 
-        {/* Plant Selector - Center */}
-        <div style={{ position: 'relative', flex: isMobile ? 0 : 1, minWidth: isMobile ? '0' : '200px', maxWidth: isMobile ? 'none' : '200px', display: 'flex', justifyContent: 'center' }}>
+        {/* Plant Selector - Desktop only (center) */}
+        {!isMobile && (
+          <div style={{ 
+            position: 'relative', 
+            flex: 1, 
+            minWidth: '200px', 
+            maxWidth: '200px', 
+            display: 'flex', 
+            justifyContent: 'center' 
+          }}>
           <button
             onClick={() => setPlantDropdownOpen(!plantDropdownOpen)}
             style={{
@@ -296,10 +458,11 @@ const Layout = () => {
               />
             </>
           )}
-        </div>
+          </div>
+        )}
 
         {/* User Profile */}
-        <div style={{ flexShrink: 0 }}>
+        <div style={{ flexShrink: 0, marginLeft: isMobile ? 'auto' : 0 }}>
           <UserProfile />
         </div>
       </header>
