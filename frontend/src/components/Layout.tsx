@@ -5,11 +5,12 @@ import { authService } from '../services/authService';
 import { userService } from '../services/userService';
 import { auth } from '../config/firebase';
 import { User } from 'firebase/auth';
-import { LogOut, LayoutDashboard, CheckSquare, Factory, Users, Wrench, UserCog, Menu, X, Settings, ChevronDown, ChevronRight, Building2 } from 'lucide-react';
+import { LogOut, LayoutDashboard, CheckSquare, Factory, Users, Wrench, UserCog, Menu, X, Settings, ChevronDown, ChevronRight, Building2, Image as ImageIcon } from 'lucide-react';
 import UserProfile from './UserProfile';
 import { useWindowSize } from '../hooks/useWindowSize';
 import { usePlant } from '../contexts/PlantContext';
 import { usePlants } from '../hooks/usePlants';
+import { appSettingsService } from '../services/appSettingsService';
 
 const Layout = () => {
   const location = useLocation();
@@ -40,6 +41,14 @@ const Layout = () => {
     retry: false,
   });
 
+  // Get app settings for logo
+  const { data: appSettings } = useQuery({
+    queryKey: ['appSettings'],
+    queryFn: appSettingsService.getAppSettings,
+    enabled: !!firebaseUser,
+    retry: false,
+  });
+
   const queryClient = useQueryClient();
 
   const handleLogout = async () => {
@@ -66,7 +75,7 @@ const Layout = () => {
 
   // Check if settings menu should be open based on current route
   useEffect(() => {
-    if (location.pathname.startsWith('/users') || location.pathname.startsWith('/plants')) {
+    if (location.pathname.startsWith('/users') || location.pathname.startsWith('/plants') || location.pathname.startsWith('/app-settings')) {
       setSettingsMenuOpen(true);
     }
   }, [location.pathname]);
@@ -90,6 +99,7 @@ const Layout = () => {
   const settingsItems = currentUser?.role === 'admin' ? [
     { path: '/users', label: 'User Management', icon: UserCog },
     { path: '/plants', label: 'Plant Master', icon: Building2 },
+    { path: '/app-settings', label: 'App Branding', icon: ImageIcon },
   ] : [];
 
   useEffect(() => {
@@ -100,7 +110,7 @@ const Layout = () => {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', flexDirection: isMobile ? 'column' : 'row', overflow: 'hidden' }}>
-      {/* Top Header with Plant Selector */}
+      {/* Top Header with Logo and Plant Selector */}
       <header
         style={{
           position: 'fixed',
@@ -113,12 +123,49 @@ const Layout = () => {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          gap: '12px',
+          gap: '16px',
           zIndex: 100,
           boxShadow: 'var(--shadow)',
           height: isMobile ? '48px' : '56px',
         }}
       >
+        {/* Logo and App Name - Left side */}
+        <Link 
+          to="/dashboard" 
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center',
+            gap: '10px',
+            textDecoration: 'none',
+            flexShrink: 0,
+          }}
+        >
+          {appSettings?.companyLogoUrl && (
+            <img
+              src={appSettings.companyLogoUrl}
+              alt={appSettings.companyName || 'Company Logo'}
+              style={{
+                height: isMobile ? '32px' : '36px',
+                width: 'auto',
+                maxWidth: isMobile ? '100px' : '120px',
+                objectFit: 'contain',
+                flexShrink: 0,
+              }}
+            />
+          )}
+          <span style={{ 
+            color: 'var(--text)', 
+            fontSize: isMobile ? '16px' : '18px',
+            fontWeight: '600',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            letterSpacing: '-0.02em',
+            lineHeight: '1.2',
+            whiteSpace: 'nowrap',
+          }}>
+            {appSettings?.appNameShort || appSettings?.companyName || 'DMS'}
+          </span>
+        </Link>
+
         {/* Mobile Menu Button - Only on mobile */}
         {isMobile && (
           <button
@@ -131,14 +178,15 @@ const Layout = () => {
               display: 'flex',
               alignItems: 'center',
               flexShrink: 0,
+              marginLeft: 'auto',
             }}
           >
             {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         )}
 
-        {/* Plant Selector */}
-        <div style={{ position: 'relative', flex: isMobile ? 1 : 'none', minWidth: isMobile ? '0' : '200px', maxWidth: isMobile ? 'none' : '200px' }}>
+        {/* Plant Selector - Center */}
+        <div style={{ position: 'relative', flex: isMobile ? 0 : 1, minWidth: isMobile ? '0' : '200px', maxWidth: isMobile ? 'none' : '200px', display: 'flex', justifyContent: 'center' }}>
           <button
             onClick={() => setPlantDropdownOpen(!plantDropdownOpen)}
             style={{
@@ -264,7 +312,7 @@ const Layout = () => {
           maxWidth: isMobile ? '280px' : '250px',
           background: 'var(--white)',
           borderRight: isMobile ? 'none' : '1px solid var(--border)',
-          padding: '20px',
+          padding: 0,
           display: isMobile && !mobileMenuOpen ? 'none' : 'flex',
           flexDirection: 'column',
           position: isMobile ? 'fixed' : 'sticky',
@@ -281,12 +329,7 @@ const Layout = () => {
           boxSizing: 'border-box',
         }}
       >
-        {!isMobile && (
-          <h1 style={{ marginBottom: '30px', color: 'var(--primary)', fontSize: '24px' }}>
-            DMS System
-          </h1>
-        )}
-        <nav style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
+        <nav style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '12px 20px' }}>
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;

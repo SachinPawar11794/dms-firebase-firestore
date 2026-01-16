@@ -1,0 +1,34 @@
+rules_version = '2';
+
+// Firebase Storage Security Rules
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Company logos - only admins can upload/delete, everyone can read
+    match /logos/{logoFileName} {
+      // Allow read access to all authenticated users (logos are public)
+      allow read: if isAuthenticated();
+      
+      // Allow write (upload/delete) only to authenticated users
+      // In production, you might want to add admin check here
+      // For now, any authenticated user can upload/delete logos
+      // You can restrict this further based on your needs
+      allow write: if isAuthenticated() 
+                    && request.resource.size < 5 * 1024 * 1024 // 5MB limit
+                    && request.resource.contentType.matches('image/.*');
+      
+      // Allow delete
+      allow delete: if isAuthenticated();
+    }
+    
+    // Default: deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

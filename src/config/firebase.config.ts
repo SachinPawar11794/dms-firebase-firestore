@@ -1,6 +1,7 @@
 import { initializeApp, getApps, cert, ServiceAccount } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
+import { getStorage } from 'firebase-admin/storage';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
@@ -48,5 +49,8 @@ export const db = getFirestore(app);
 
 // Initialize Auth
 export const auth = getAuth(app);
+
+// Initialize Storage
+export const storage = getStorage(app);
 
 export default app;

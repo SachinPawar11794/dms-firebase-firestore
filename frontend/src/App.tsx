@@ -13,6 +13,7 @@ import Employees from './pages/Employees';
 import Maintenance from './pages/Maintenance';
 import Users from './pages/Users';
 import Plants from './pages/Plants';
+import AppSettings from './pages/AppSettings';
 import Layout from './components/Layout';
 import Loading from './components/Loading';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -104,6 +105,14 @@ function App() {
             element={
               <ProtectedRoute requireAdmin={true}>
                 <Plants />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="app-settings"
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <AppSettings />
               </ProtectedRoute>
             }
           />
