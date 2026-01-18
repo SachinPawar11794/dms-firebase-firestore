@@ -1,43 +1,39 @@
-import { db } from '../../../config/firebase.config';
 import { Employee, CreateEmployeeDto, UpdateEmployeeDto } from '../models/employee.model';
 import { Timestamp } from 'firebase-admin/firestore';
 import { logger } from '../../../utils/logger';
+import { EmployeeRepository } from '../../../repositories/employee.repository';
 
 export class EmployeeService {
-  async createEmployee(employeeData: CreateEmployeeDto): Promise<Employee> {
+  private employeeRepository: EmployeeRepository;
+
+  constructor() {
+    this.employeeRepository = new EmployeeRepository();
+  }
+  async createEmployee(employeeData: CreateEmployeeDto, plantId?: string, createdBy?: string): Promise<Employee> {
     try {
-      const now = Timestamp.now();
+      // Convert dates to ISO strings for storage
+      const personalInfo = {
+        ...employeeData.personalInfo,
+        dateOfBirth: employeeData.personalInfo.dateOfBirth instanceof Date
+          ? employeeData.personalInfo.dateOfBirth.toISOString()
+          : new Date(employeeData.personalInfo.dateOfBirth).toISOString(),
+      };
 
-      // Convert dates to Timestamps
-      const dateOfBirth = employeeData.personalInfo.dateOfBirth instanceof Date
-        ? Timestamp.fromDate(employeeData.personalInfo.dateOfBirth)
-        : Timestamp.fromDate(new Date(employeeData.personalInfo.dateOfBirth));
+      const employmentInfo = {
+        ...employeeData.employmentInfo,
+        hireDate: employeeData.employmentInfo.hireDate instanceof Date
+          ? employeeData.employmentInfo.hireDate.toISOString()
+          : new Date(employeeData.employmentInfo.hireDate).toISOString(),
+      };
 
-      const hireDate = employeeData.employmentInfo.hireDate instanceof Date
-        ? Timestamp.fromDate(employeeData.employmentInfo.hireDate)
-        : Timestamp.fromDate(new Date(employeeData.employmentInfo.hireDate));
-
-      const employee: Omit<Employee, 'id'> = {
+      return await this.employeeRepository.createEmployee({
         employeeId: employeeData.employeeId,
-        personalInfo: {
-          ...employeeData.personalInfo,
-          dateOfBirth,
-        },
-        employmentInfo: {
-          ...employeeData.employmentInfo,
-          hireDate,
-        },
+        personalInfo,
+        employmentInfo,
         documents: [],
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      const docRef = await db.collection('employees').add(employee);
-
-      return {
-        id: docRef.id,
-        ...employee,
-      };
+        plantId,
+        createdBy,
+      });
     } catch (error: any) {
       logger.error('Error creating employee:', error);
       throw new Error('Failed to create employee');
@@ -46,16 +42,7 @@ export class EmployeeService {
 
   async getEmployeeById(employeeId: string): Promise<Employee | null> {
     try {
-      const employeeDoc = await db.collection('employees').doc(employeeId).get();
-
-      if (!employeeDoc.exists) {
-        return null;
-      }
-
-      return {
-        id: employeeDoc.id,
-        ...(employeeDoc.data() as Omit<Employee, 'id'>),
-      };
+      return await this.employeeRepository.findById(employeeId);
     } catch (error: any) {
       logger.error('Error getting employee:', error);
       throw new Error('Failed to get employee');
@@ -65,20 +52,8 @@ export class EmployeeService {
   async getEmployees(page: number = 1, limit: number = 50): Promise<{ employees: Employee[]; total: number }> {
     try {
       const offset = (page - 1) * limit;
-      const employeesSnapshot = await db
-        .collection('employees')
-        .orderBy('createdAt', 'desc')
-        .limit(limit)
-        .offset(offset)
-        .get();
-
-      const totalSnapshot = await db.collection('employees').count().get();
-      const total = totalSnapshot.data().count;
-
-      const employees: Employee[] = employeesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Employee, 'id'>),
-      }));
+      const employees = await this.employeeRepository.findAll({}, limit, offset);
+      const total = await this.employeeRepository.count();
 
       return { employees, total };
     } catch (error: any) {
@@ -89,37 +64,35 @@ export class EmployeeService {
 
   async updateEmployee(employeeId: string, employeeData: UpdateEmployeeDto): Promise<Employee> {
     try {
-      const updateData: any = {
-        updatedAt: Timestamp.now(),
-      };
+      const updateData: Partial<Employee> = {};
 
       if (employeeData.personalInfo) {
-        updateData['personalInfo'] = employeeData.personalInfo;
+        const personalInfo: any = { ...employeeData.personalInfo };
         if (employeeData.personalInfo.dateOfBirth) {
-          updateData['personalInfo.dateOfBirth'] = employeeData.personalInfo.dateOfBirth instanceof Date
+          personalInfo.dateOfBirth = employeeData.personalInfo.dateOfBirth instanceof Date
             ? Timestamp.fromDate(employeeData.personalInfo.dateOfBirth)
             : Timestamp.fromDate(new Date(employeeData.personalInfo.dateOfBirth));
         }
+        updateData.personalInfo = personalInfo as any;
       }
 
       if (employeeData.employmentInfo) {
-        updateData['employmentInfo'] = employeeData.employmentInfo;
+        const employmentInfo: any = { ...employeeData.employmentInfo };
         if (employeeData.employmentInfo.hireDate) {
-          updateData['employmentInfo.hireDate'] = employeeData.employmentInfo.hireDate instanceof Date
+          employmentInfo.hireDate = employeeData.employmentInfo.hireDate instanceof Date
             ? Timestamp.fromDate(employeeData.employmentInfo.hireDate)
             : Timestamp.fromDate(new Date(employeeData.employmentInfo.hireDate));
         }
+        updateData.employmentInfo = employmentInfo as any;
       }
 
       if (employeeData.documents) {
         updateData.documents = employeeData.documents;
       }
 
-      await db.collection('employees').doc(employeeId).update(updateData);
-
-      const updatedEmployee = await this.getEmployeeById(employeeId);
+      const updatedEmployee = await this.employeeRepository.updateEmployee(employeeId, updateData);
       if (!updatedEmployee) {
-        throw new Error('Employee not found after update');
+        throw new Error('Employee not found');
       }
 
       return updatedEmployee;
@@ -131,7 +104,10 @@ export class EmployeeService {
 
   async deleteEmployee(employeeId: string): Promise<void> {
     try {
-      await db.collection('employees').doc(employeeId).delete();
+      const deleted = await this.employeeRepository.delete(employeeId);
+      if (!deleted) {
+        throw new Error('Employee not found');
+      }
     } catch (error: any) {
       logger.error('Error deleting employee:', error);
       throw new Error('Failed to delete employee');

@@ -1,36 +1,31 @@
-import { db } from '../../../config/firebase.config';
 import { Production, CreateProductionDto, UpdateProductionDto } from '../models/production.model';
 import { Timestamp } from 'firebase-admin/firestore';
 import { logger } from '../../../utils/logger';
+import { ProductionRepository } from '../../../repositories/production.repository';
 
 export class ProductionService {
-  async createProduction(productionData: CreateProductionDto, createdBy: string): Promise<Production> {
-    try {
-      const now = Timestamp.now();
-      const productionDate = productionData.productionDate instanceof Date
-        ? Timestamp.fromDate(productionData.productionDate)
-        : Timestamp.fromDate(new Date(productionData.productionDate));
+  private productionRepository: ProductionRepository;
 
-      const production: Omit<Production, 'id'> = {
+  constructor() {
+    this.productionRepository = new ProductionRepository();
+  }
+  async createProduction(productionData: CreateProductionDto, createdBy: string, plantId?: string): Promise<Production> {
+    try {
+      const productionDate = productionData.productionDate instanceof Date
+        ? productionData.productionDate
+        : new Date(productionData.productionDate);
+
+      return await this.productionRepository.createProduction({
         productName: productionData.productName,
         quantity: productionData.quantity,
         unit: productionData.unit,
         productionDate,
-        status: 'planned',
         assignedTeam: productionData.assignedTeam,
         qualityCheck: false,
-        notes: productionData.notes || '',
-        createdAt: now,
-        updatedAt: now,
+        notes: productionData.notes,
+        plantId,
         createdBy,
-      };
-
-      const docRef = await db.collection('productions').add(production);
-
-      return {
-        id: docRef.id,
-        ...production,
-      };
+      });
     } catch (error: any) {
       logger.error('Error creating production:', error);
       throw new Error('Failed to create production');
@@ -39,39 +34,21 @@ export class ProductionService {
 
   async getProductionById(productionId: string): Promise<Production | null> {
     try {
-      const productionDoc = await db.collection('productions').doc(productionId).get();
-
-      if (!productionDoc.exists) {
-        return null;
-      }
-
-      return {
-        id: productionDoc.id,
-        ...(productionDoc.data() as Omit<Production, 'id'>),
-      };
+      return await this.productionRepository.findById(productionId);
     } catch (error: any) {
       logger.error('Error getting production:', error);
       throw new Error('Failed to get production');
     }
   }
 
-  async getProductions(page: number = 1, limit: number = 50): Promise<{ productions: Production[]; total: number }> {
+  async getProductions(page: number = 1, limit: number = 50, plantId?: string): Promise<{ productions: Production[]; total: number }> {
     try {
       const offset = (page - 1) * limit;
-      const productionsSnapshot = await db
-        .collection('productions')
-        .orderBy('createdAt', 'desc')
-        .limit(limit)
-        .offset(offset)
-        .get();
+      const filters: any = {};
+      if (plantId) filters.plantId = plantId;
 
-      const totalSnapshot = await db.collection('productions').count().get();
-      const total = totalSnapshot.data().count;
-
-      const productions: Production[] = productionsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Production, 'id'>),
-      }));
+      const productions = await this.productionRepository.findWithFilters(filters, limit, offset);
+      const total = await this.productionRepository.count(filters);
 
       return { productions, total };
     } catch (error: any) {
@@ -82,10 +59,15 @@ export class ProductionService {
 
   async updateProduction(productionId: string, productionData: UpdateProductionDto): Promise<Production> {
     try {
-      const updateData: any = {
-        ...productionData,
-        updatedAt: Timestamp.now(),
-      };
+      const updateData: any = {};
+
+      if (productionData.productName !== undefined) updateData.productName = productionData.productName;
+      if (productionData.quantity !== undefined) updateData.quantity = productionData.quantity;
+      if (productionData.unit !== undefined) updateData.unit = productionData.unit;
+      if (productionData.status !== undefined) updateData.status = productionData.status;
+      if (productionData.assignedTeam !== undefined) updateData.assignedTeam = productionData.assignedTeam;
+      if (productionData.qualityCheck !== undefined) updateData.qualityCheck = productionData.qualityCheck;
+      if (productionData.notes !== undefined) updateData.notes = productionData.notes;
 
       if (productionData.productionDate) {
         updateData.productionDate = productionData.productionDate instanceof Date
@@ -93,11 +75,9 @@ export class ProductionService {
           : Timestamp.fromDate(new Date(productionData.productionDate));
       }
 
-      await db.collection('productions').doc(productionId).update(updateData);
-
-      const updatedProduction = await this.getProductionById(productionId);
+      const updatedProduction = await this.productionRepository.updateProduction(productionId, updateData);
       if (!updatedProduction) {
-        throw new Error('Production not found after update');
+        throw new Error('Production not found');
       }
 
       return updatedProduction;
@@ -109,7 +89,10 @@ export class ProductionService {
 
   async deleteProduction(productionId: string): Promise<void> {
     try {
-      await db.collection('productions').doc(productionId).delete();
+      const deleted = await this.productionRepository.delete(productionId);
+      if (!deleted) {
+        throw new Error('Production not found');
+      }
     } catch (error: any) {
       logger.error('Error deleting production:', error);
       throw new Error('Failed to delete production');

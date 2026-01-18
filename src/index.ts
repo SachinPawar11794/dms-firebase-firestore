@@ -54,10 +54,28 @@ app.use('/api/v1/pms/productions', productionRoutes);
 app.use('/api/v1/human-resource/employees', employeeRoutes);
 app.use('/api/v1/maintenance', maintenanceRoutes);
 
-// Catch-all handler for unmatched API routes (must be before error handler)
+// Catch-all handler for unmatched API routes
 app.use('/api/*', (req, res) => {
   logger.warn(`Unmatched API route: ${req.method} ${req.path}`);
   ResponseHelper.error(res, 'NOT_FOUND', `API route not found: ${req.method} ${req.path}`, 404);
+});
+
+// SPA fallback: serve index.html for all non-API GET routes
+// This allows React Router to handle client-side routing
+// Must be before error handler but after all API routes
+app.get('*', (req, res, next) => {
+  // Only serve index.html for GET requests that aren't API routes or static files
+  if (!req.path.startsWith('/api') && !req.path.startsWith('/assets')) {
+    const indexPath = path.join(__dirname, '../public/index.html');
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        logger.error('Error sending index.html:', err);
+        next(err);
+      }
+    });
+  } else {
+    next();
+  }
 });
 
 // Error handling middleware (must be last)

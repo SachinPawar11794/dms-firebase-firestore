@@ -1,5 +1,4 @@
 import { initializeApp, getApps, cert, ServiceAccount } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { getStorage } from 'firebase-admin/storage';
 import * as dotenv from 'dotenv';
@@ -44,13 +43,10 @@ if (getApps().length === 0) {
   app = getApps()[0];
 }
 
-// Initialize Firestore
-export const db = getFirestore(app);
-
-// Initialize Auth
+// Initialize Auth (still using Firebase Auth)
 export const auth = getAuth(app);
 
-// Initialize Storage
+// Initialize Storage (still using Firebase Storage for files)
 export const storage = getStorage(app);
 
 export default app;

@@ -18,39 +18,7 @@ export const errorHandler = (
     body: req.body,
   });
 
-  // Firestore index error
-  if (err.code === 'INDEX_REQUIRED' || err.message === 'INDEX_REQUIRED' || err.code === 9) {
-    // Extract index URL from error if available
-    let indexUrl = err.indexUrl;
-    
-    // Try to extract from error message if not directly provided
-    if (!indexUrl && err.message) {
-      const urlMatch = err.message.match(/https:\/\/console\.firebase\.google\.com[^\s]+/);
-      if (urlMatch) {
-        indexUrl = urlMatch[0];
-      }
-    }
-    
-    // Fallback to Firebase Console indexes page
-    if (!indexUrl && process.env.FIREBASE_PROJECT_ID) {
-      indexUrl = `https://console.firebase.google.com/project/${process.env.FIREBASE_PROJECT_ID}/firestore/indexes`;
-    }
-    
-    ResponseHelper.error(
-      res,
-      'INDEX_REQUIRED',
-      'Firestore composite index is required for this query. A link to create the index has been provided.',
-      500,
-      { 
-        indexUrl: indexUrl || 'https://console.firebase.google.com',
-        message: 'Please create the required index in Firebase Console. The link will open automatically.',
-        details: err.message
-      }
-    );
-    return;
-  }
-
-  // Firestore errors
+  // Permission errors
   if (err.code === 'permission-denied') {
     ResponseHelper.error(res, 'PERMISSION_DENIED', 'Access denied', 403);
     return;

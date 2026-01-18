@@ -69,11 +69,14 @@ if ($hasPermission) {
 } else {
     Write-Host "[WARNING] Cloud Build needs Cloud Run Admin permission" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Granting permission..." -ForegroundColor Cyan
+    Write-Host "Granting permissions..." -ForegroundColor Cyan
     gcloud projects add-iam-policy-binding $PROJECT_ID `
         --member="serviceAccount:$SERVICE_ACCOUNT" `
         --role="roles/run.admin" 2>&1 | Out-Null
-    Write-Host "[OK] Permission granted" -ForegroundColor Green
+    gcloud projects add-iam-policy-binding $PROJECT_ID `
+        --member="serviceAccount:$SERVICE_ACCOUNT" `
+        --role="roles/iam.serviceAccountUser" 2>&1 | Out-Null
+    Write-Host "[OK] Permissions granted" -ForegroundColor Green
 }
 Write-Host ""
 

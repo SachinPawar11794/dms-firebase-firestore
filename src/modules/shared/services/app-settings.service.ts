@@ -1,23 +1,41 @@
-import { db, storage } from '../../../config/firebase.config';
+import { storage } from '../../../config/firebase.config';
 import { AppSettings, UpdateAppSettingsDto } from '../models/app-settings.model';
 import { Timestamp } from 'firebase-admin/firestore';
 import { logger } from '../../../utils/logger';
+import { AppSettingsRepository } from '../../../repositories/app-settings.repository';
 
-const SETTINGS_DOC_ID = 'app-settings'; // Single document for app settings
+const SETTINGS_KEY = 'app_branding'; // Key for app settings in database
 
 export class AppSettingsService {
+  private appSettingsRepository: AppSettingsRepository;
+
+  constructor() {
+    this.appSettingsRepository = new AppSettingsRepository();
+  }
+
   async getAppSettings(): Promise<AppSettings | null> {
     try {
-      const settingsDoc = await db.collection('appSettings').doc(SETTINGS_DOC_ID).get();
+      const settings = await this.appSettingsRepository.findByKey(SETTINGS_KEY);
 
-      if (!settingsDoc.exists) {
-        // Return default settings if document doesn't exist
+      if (!settings) {
+        // Return default settings if not found
         return null;
       }
 
+      // Parse the JSONB value (repository returns AppSettings with value property)
+      const settingsData = settings as any;
+      const value = typeof settingsData.value === 'string' ? JSON.parse(settingsData.value) : (settingsData.value || {});
+      
+      // Map to AppSettings interface
       return {
-        id: settingsDoc.id,
-        ...(settingsDoc.data() as Omit<AppSettings, 'id'>),
+        id: settings.id,
+        companyLogoUrl: value.logoUrl || null,
+        companyName: value.companyName || null,
+        appNameShort: value.appNameShort || value.appName || 'DMS',
+        appNameLong: value.appNameLong || null,
+        createdAt: Timestamp.fromDate(new Date(settings.updatedAt.toDate().getTime() - 86400000)), // Approximate
+        updatedAt: settings.updatedAt,
+        updatedBy: settings.updatedBy || '',
       };
     } catch (error: any) {
       logger.error('Error getting app settings:', error);
@@ -27,73 +45,46 @@ export class AppSettingsService {
 
   async updateAppSettings(settingsData: UpdateAppSettingsDto, updatedBy: string): Promise<AppSettings> {
     try {
-      const settingsRef = db.collection('appSettings').doc(SETTINGS_DOC_ID);
-      const settingsDoc = await settingsRef.get();
-
-      const now = Timestamp.now();
-
-      if (!settingsDoc.exists) {
-        // Create new settings document
-        const newSettings: Omit<AppSettings, 'id'> = {
-          ...settingsData,
-          createdAt: now,
-          updatedAt: now,
-          updatedBy,
-        };
-
-        await settingsRef.set(newSettings);
-
-        return {
-          id: SETTINGS_DOC_ID,
-          ...newSettings,
-        };
-      } else {
-        // Update existing settings
-        const fieldsToUpdate: any = {
-          updatedAt: now,
-          updatedBy,
-        };
-
-        // Only update fields that are provided
-        if (settingsData.companyLogoUrl !== undefined) {
-          // If null, delete the field; otherwise set the value
-          if (settingsData.companyLogoUrl === null) {
-            fieldsToUpdate.companyLogoUrl = null;
-          } else {
-            fieldsToUpdate.companyLogoUrl = settingsData.companyLogoUrl;
-          }
-        }
-        if (settingsData.companyName !== undefined) {
-          if (settingsData.companyName === null || settingsData.companyName === '') {
-            fieldsToUpdate.companyName = null;
-          } else {
-            fieldsToUpdate.companyName = settingsData.companyName;
-          }
-        }
-        if (settingsData.appNameShort !== undefined) {
-          if (settingsData.appNameShort === null || settingsData.appNameShort === '') {
-            fieldsToUpdate.appNameShort = null;
-          } else {
-            fieldsToUpdate.appNameShort = settingsData.appNameShort;
-          }
-        }
-        if (settingsData.appNameLong !== undefined) {
-          if (settingsData.appNameLong === null || settingsData.appNameLong === '') {
-            fieldsToUpdate.appNameLong = null;
-          } else {
-            fieldsToUpdate.appNameLong = settingsData.appNameLong;
-          }
-        }
-
-        await settingsRef.update(fieldsToUpdate);
-
-        const updatedSettings = await this.getAppSettings();
-        if (!updatedSettings) {
-          throw new Error('Failed to retrieve updated settings');
-        }
-
-        return updatedSettings;
+      // Get existing settings
+      const existing = await this.appSettingsRepository.findByKey(SETTINGS_KEY);
+      
+      // Build value object
+      const existingData = existing as any;
+      const currentValue = existing && typeof existingData.value === 'string' 
+        ? JSON.parse(existingData.value) 
+        : (existingData?.value || {});
+      
+      const newValue: any = { ...currentValue };
+      
+      // Update only provided fields
+      if (settingsData.companyLogoUrl !== undefined) {
+        newValue.logoUrl = settingsData.companyLogoUrl;
       }
+      if (settingsData.companyName !== undefined) {
+        newValue.companyName = settingsData.companyName || null;
+      }
+      if (settingsData.appNameShort !== undefined) {
+        newValue.appNameShort = settingsData.appNameShort || null;
+        newValue.appName = settingsData.appNameShort || 'DMS'; // Keep appName for backward compatibility
+      }
+      if (settingsData.appNameLong !== undefined) {
+        newValue.appNameLong = settingsData.appNameLong || null;
+      }
+
+      // Upsert settings
+      await this.appSettingsRepository.upsertByKey(
+        SETTINGS_KEY,
+        newValue,
+        'Application branding settings',
+        updatedBy
+      );
+
+      const updatedSettings = await this.getAppSettings();
+      if (!updatedSettings) {
+        throw new Error('Failed to retrieve updated settings');
+      }
+
+      return updatedSettings;
     } catch (error: any) {
       logger.error('Error updating app settings:', error);
       throw error;

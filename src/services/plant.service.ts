@@ -1,32 +1,23 @@
-import { db } from '../config/firebase.config';
 import { Plant, CreatePlantDto, UpdatePlantDto } from '../models/plant.model';
-import { Timestamp } from 'firebase-admin/firestore';
 import logger from '../utils/logger';
+import { PlantRepository } from '../repositories/plant.repository';
 
 class PlantService {
+  private plantRepository: PlantRepository;
+
+  constructor() {
+    this.plantRepository = new PlantRepository();
+  }
+
   async getAllPlants(page = 1, limit = 50): Promise<{ data: Plant[]; total: number; page: number; limit: number }> {
     try {
       const offset = (page - 1) * limit;
       
       // Get total count
-      const countSnapshot = await db.collection('plants').count().get();
-      const total = countSnapshot.data().count;
+      const total = await this.plantRepository.count();
 
       // Get paginated data
-      const snapshot = await db
-        .collection('plants')
-        .orderBy('createdAt', 'desc')
-        .offset(offset)
-        .limit(limit)
-        .get();
-
-      const plants: Plant[] = [];
-      snapshot.forEach((doc) => {
-        plants.push({
-          id: doc.id,
-          ...(doc.data() as Omit<Plant, 'id'>),
-        });
-      });
+      const plants = await this.plantRepository.findAll({}, limit, offset);
 
       return {
         data: plants,
@@ -42,16 +33,7 @@ class PlantService {
 
   async getPlantById(plantId: string): Promise<Plant | null> {
     try {
-      const plantDoc = await db.collection('plants').doc(plantId).get();
-
-      if (!plantDoc.exists) {
-        return null;
-      }
-
-      return {
-        id: plantDoc.id,
-        ...(plantDoc.data() as Omit<Plant, 'id'>),
-      };
+      return await this.plantRepository.findById(plantId);
     } catch (error: any) {
       logger.error('Error getting plant:', error);
       throw new Error('Failed to get plant');
@@ -60,21 +42,7 @@ class PlantService {
 
   async getPlantByCode(code: string): Promise<Plant | null> {
     try {
-      const snapshot = await db
-        .collection('plants')
-        .where('code', '==', code.toUpperCase())
-        .limit(1)
-        .get();
-
-      if (snapshot.empty) {
-        return null;
-      }
-
-      const doc = snapshot.docs[0];
-      return {
-        id: doc.id,
-        ...(doc.data() as Omit<Plant, 'id'>),
-      };
+      return await this.plantRepository.findByCode(code);
     } catch (error: any) {
       logger.error('Error getting plant by code:', error);
       throw new Error('Failed to get plant by code');
@@ -89,10 +57,9 @@ class PlantService {
         throw new Error('Plant code already exists');
       }
 
-      const now = Timestamp.now();
-      const plant: Omit<Plant, 'id'> = {
+      const plant = await this.plantRepository.createPlant({
         name: plantData.name,
-        code: plantData.code.toUpperCase(),
+        code: plantData.code,
         address: plantData.address,
         city: plantData.city,
         state: plantData.state,
@@ -102,18 +69,11 @@ class PlantService {
         contactEmail: plantData.contactEmail,
         contactPhone: plantData.contactPhone,
         isActive: plantData.isActive !== undefined ? plantData.isActive : true,
-        createdAt: now,
-        updatedAt: now,
         createdBy: userId,
         updatedBy: userId,
-      };
+      });
 
-      const docRef = await db.collection('plants').add(plant);
-
-      return {
-        id: docRef.id,
-        ...plant,
-      };
+      return plant;
     } catch (error: any) {
       logger.error('Error creating plant:', error);
       if (error.message === 'Plant code already exists') {
@@ -133,29 +93,13 @@ class PlantService {
         }
       }
 
-      const updateData: any = {
+      const updatedPlant = await this.plantRepository.updatePlant(plantId, {
         ...plantData,
-        updatedAt: Timestamp.now(),
         updatedBy: userId,
-      };
-
-      // Convert code to uppercase if provided
-      if (updateData.code) {
-        updateData.code = updateData.code.toUpperCase();
-      }
-
-      // Remove undefined fields
-      Object.keys(updateData).forEach((key) => {
-        if (updateData[key] === undefined) {
-          delete updateData[key];
-        }
       });
 
-      await db.collection('plants').doc(plantId).update(updateData);
-
-      const updatedPlant = await this.getPlantById(plantId);
       if (!updatedPlant) {
-        throw new Error('Plant not found after update');
+        throw new Error('Plant not found');
       }
 
       return updatedPlant;
@@ -171,17 +115,15 @@ class PlantService {
   async deletePlant(plantId: string): Promise<void> {
     try {
       // Check if plant is being used by any users
-      const usersSnapshot = await db
-        .collection('users')
-        .where('plant', '==', plantId)
-        .limit(1)
-        .get();
-
-      if (!usersSnapshot.empty) {
+      const isUsed = await this.plantRepository.isUsedByUsers(plantId);
+      if (isUsed) {
         throw new Error('Cannot delete plant: It is assigned to one or more users');
       }
 
-      await db.collection('plants').doc(plantId).delete();
+      const deleted = await this.plantRepository.delete(plantId);
+      if (!deleted) {
+        throw new Error('Plant not found');
+      }
     } catch (error: any) {
       logger.error('Error deleting plant:', error);
       if (error.message.includes('Cannot delete plant')) {
@@ -193,21 +135,7 @@ class PlantService {
 
   async getActivePlants(): Promise<Plant[]> {
     try {
-      const snapshot = await db
-        .collection('plants')
-        .where('isActive', '==', true)
-        .orderBy('name', 'asc')
-        .get();
-
-      const plants: Plant[] = [];
-      snapshot.forEach((doc) => {
-        plants.push({
-          id: doc.id,
-          ...(doc.data() as Omit<Plant, 'id'>),
-        });
-      });
-
-      return plants;
+      return await this.plantRepository.findActive();
     } catch (error: any) {
       logger.error('Error getting active plants:', error);
       throw new Error('Failed to get active plants');

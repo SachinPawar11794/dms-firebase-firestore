@@ -1,45 +1,49 @@
-import { db } from '../../../config/firebase.config';
 import { Attendance, CreateAttendanceDto } from '../models/employee.model';
-import { Timestamp } from 'firebase-admin/firestore';
 import { logger } from '../../../utils/logger';
+import { AttendanceRepository } from '../../../repositories/attendance.repository';
+import { EmployeeRepository } from '../../../repositories/employee.repository';
 
 export class AttendanceService {
-  async createAttendance(attendanceData: CreateAttendanceDto): Promise<Attendance> {
+  private attendanceRepository: AttendanceRepository;
+  private employeeRepository: EmployeeRepository;
+
+  constructor() {
+    this.attendanceRepository = new AttendanceRepository();
+    this.employeeRepository = new EmployeeRepository();
+  }
+  async createAttendance(attendanceData: CreateAttendanceDto, createdBy?: string): Promise<Attendance> {
     try {
-      const now = Timestamp.now();
+      // Find employee by employeeId to get UUID
+      const employee = await this.employeeRepository.findByEmployeeId(attendanceData.employeeId);
+      if (!employee) {
+        throw new Error('Employee not found');
+      }
+
       const date = attendanceData.date instanceof Date
-        ? Timestamp.fromDate(attendanceData.date)
-        : Timestamp.fromDate(new Date(attendanceData.date));
+        ? attendanceData.date
+        : new Date(attendanceData.date);
 
-      const checkIn = attendanceData.checkIn
+      const checkInTime = attendanceData.checkIn
         ? (attendanceData.checkIn instanceof Date
-            ? Timestamp.fromDate(attendanceData.checkIn)
-            : Timestamp.fromDate(new Date(attendanceData.checkIn)))
-        : null;
+            ? attendanceData.checkIn
+            : new Date(attendanceData.checkIn))
+        : undefined;
 
-      const checkOut = attendanceData.checkOut
+      const checkOutTime = attendanceData.checkOut
         ? (attendanceData.checkOut instanceof Date
-            ? Timestamp.fromDate(attendanceData.checkOut)
-            : Timestamp.fromDate(new Date(attendanceData.checkOut)))
-        : null;
+            ? attendanceData.checkOut
+            : new Date(attendanceData.checkOut))
+        : undefined;
 
-      const attendance: Omit<Attendance, 'id'> = {
-        employeeId: attendanceData.employeeId,
+      return await this.attendanceRepository.createAttendance({
+        employeeId: employee.id, // Use UUID from employees table
         date,
-        checkIn,
-        checkOut,
+        checkInTime,
+        checkOutTime,
         status: attendanceData.status,
-        notes: attendanceData.notes || '',
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      const docRef = await db.collection('attendance').add(attendance);
-
-      return {
-        id: docRef.id,
-        ...attendance,
-      };
+        notes: attendanceData.notes,
+        createdBy,
+      });
     } catch (error: any) {
       logger.error('Error creating attendance:', error);
       throw new Error('Failed to create attendance');
@@ -49,25 +53,8 @@ export class AttendanceService {
   async getAttendanceByEmployeeId(employeeId: string, page: number = 1, limit: number = 50): Promise<{ attendance: Attendance[]; total: number }> {
     try {
       const offset = (page - 1) * limit;
-      const attendanceSnapshot = await db
-        .collection('attendance')
-        .where('employeeId', '==', employeeId)
-        .orderBy('date', 'desc')
-        .limit(limit)
-        .offset(offset)
-        .get();
-
-      const totalSnapshot = await db
-        .collection('attendance')
-        .where('employeeId', '==', employeeId)
-        .count()
-        .get();
-      const total = totalSnapshot.data().count;
-
-      const attendance: Attendance[] = attendanceSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Attendance, 'id'>),
-      }));
+      const attendance = await this.attendanceRepository.findByEmployeeId(employeeId, limit, offset);
+      const total = await this.attendanceRepository.count({ employeeId });
 
       return { attendance, total };
     } catch (error: any) {

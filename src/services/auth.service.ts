@@ -1,12 +1,18 @@
-import { auth, db } from '../config/firebase.config';
+import { auth } from '../config/firebase.config';
 import { User, CreateUserDto, UpdateUserDto } from '../models/user.model';
-import { Timestamp } from 'firebase-admin/firestore';
 import { logger } from '../utils/logger';
 import { DEFAULT_PERMISSIONS } from '../models/permission.model';
+import { UserRepository } from '../repositories/user.repository';
 
 export class AuthService {
+  private userRepository: UserRepository;
+
+  constructor() {
+    this.userRepository = new UserRepository();
+  }
+
   /**
-   * Create both Firebase Auth user and Firestore document
+   * Create both Firebase Auth user and PostgreSQL record
    */
   async createUserWithAuth(userData: CreateUserDto & { password: string }): Promise<User> {
     try {
@@ -25,7 +31,7 @@ export class AuthService {
 
       logger.info(`Firebase Auth user created: ${userRecord.uid}`);
 
-      // Create Firestore document
+      // Create PostgreSQL record
       const user = await this.createUser(userData, userRecord.uid);
       return user;
     } catch (error: any) {
@@ -70,61 +76,47 @@ export class AuthService {
 
   async createUser(userData: CreateUserDto, uid: string): Promise<User> {
     try {
-      const now = Timestamp.now();
       const modulePermissions = userData.modulePermissions || this.getDefaultPermissions(userData.role);
 
-      // Build user object, only including defined fields (Firestore doesn't allow undefined)
-      const user: any = {
+      // Create user in PostgreSQL
+      const user = await this.userRepository.createWithFirebaseUid({
+        firebaseUid: uid,
         email: userData.email,
         displayName: userData.displayName,
         role: userData.role,
         modulePermissions,
-        createdAt: now,
-        updatedAt: now,
         isActive: userData.isActive !== undefined ? userData.isActive : true,
-      };
+        employeeId: userData.employeeId,
+        plant: userData.plant,
+        department: userData.department,
+        designation: userData.designation,
+        contactNo: userData.contactNo,
+      });
 
-      // Only add optional fields if they are defined (not undefined or empty string)
-      if (userData.employeeId) {
-        user.employeeId = userData.employeeId;
-      }
-      if (userData.plant) {
-        user.plant = userData.plant;
-      }
-      if (userData.department) {
-        user.department = userData.department;
-      }
-      if (userData.designation) {
-        user.designation = userData.designation;
-      }
-      if (userData.contactNo) {
-        user.contactNo = userData.contactNo;
-      }
-
-      await db.collection('users').doc(uid).set(user);
-
-      return {
-        id: uid,
-        ...user,
-      };
+      return user;
     } catch (error: any) {
       logger.error('Error creating user:', error);
+      // If PostgreSQL insert fails, try to clean up Firebase Auth user
+      try {
+        await auth.deleteUser(uid);
+      } catch (deleteError) {
+        logger.error('Failed to clean up Firebase Auth user after PostgreSQL error:', deleteError);
+      }
       throw new Error('Failed to create user');
     }
   }
 
   async getUserById(userId: string): Promise<User | null> {
     try {
-      const userDoc = await db.collection('users').doc(userId).get();
+      // First try to find by PostgreSQL ID
+      let user = await this.userRepository.findById(userId);
 
-      if (!userDoc.exists) {
-        return null;
+      // If not found, try to find by Firebase UID (for backward compatibility)
+      if (!user) {
+        user = await this.userRepository.findByFirebaseUid(userId);
       }
 
-      return {
-        id: userDoc.id,
-        ...(userDoc.data() as Omit<User, 'id'>),
-      };
+      return user;
     } catch (error: any) {
       logger.error('Error getting user:', error);
       throw new Error('Failed to get user');
@@ -133,51 +125,34 @@ export class AuthService {
 
   async getUserByEmail(email: string): Promise<User | null> {
     try {
-      const usersSnapshot = await db
-        .collection('users')
-        .where('email', '==', email)
-        .limit(1)
-        .get();
-
-      if (usersSnapshot.empty) {
-        return null;
-      }
-
-      const userDoc = usersSnapshot.docs[0];
-      return {
-        id: userDoc.id,
-        ...(userDoc.data() as Omit<User, 'id'>),
-      };
+      return await this.userRepository.findByEmail(email);
     } catch (error: any) {
       logger.error('Error getting user by email:', error);
       throw new Error('Failed to get user by email');
     }
   }
 
+  async getUserByFirebaseUid(firebaseUid: string): Promise<User | null> {
+    try {
+      return await this.userRepository.findByFirebaseUid(firebaseUid);
+    } catch (error: any) {
+      logger.error('Error getting user by Firebase UID:', error);
+      throw new Error('Failed to get user by Firebase UID');
+    }
+  }
+
   async updateUser(userId: string, userData: UpdateUserDto): Promise<User> {
     try {
-      const updateData: any = {
-        ...userData,
-        updatedAt: Timestamp.now(),
-      };
+      const updateData: Partial<User> = { ...userData };
 
       // If role is updated, update permissions
       if (userData.role) {
         updateData.modulePermissions = this.getDefaultPermissions(userData.role);
       }
 
-      // Remove undefined fields to avoid overwriting with undefined
-      Object.keys(updateData).forEach(key => {
-        if (updateData[key] === undefined) {
-          delete updateData[key];
-        }
-      });
-
-      await db.collection('users').doc(userId).update(updateData);
-
-      const updatedUser = await this.getUserById(userId);
+      const updatedUser = await this.userRepository.update(userId, updateData);
       if (!updatedUser) {
-        throw new Error('User not found after update');
+        throw new Error('User not found');
       }
 
       return updatedUser;
@@ -189,8 +164,38 @@ export class AuthService {
 
   async deleteUser(userId: string): Promise<void> {
     try {
-      await db.collection('users').doc(userId).delete();
-      await auth.deleteUser(userId);
+      // Try to get user by ID first, then by Firebase UID
+      let user = await this.userRepository.findById(userId);
+      let firebaseUid: string | null = null;
+
+      if (user) {
+        // If found by ID, we need to get the Firebase UID from the database
+        const userRow = await this.userRepository.query(
+          `SELECT firebase_uid FROM users WHERE id = $1`,
+          [userId]
+        );
+        firebaseUid = userRow.rows[0]?.firebase_uid || null;
+      } else {
+        // Try by Firebase UID
+        user = await this.userRepository.findByFirebaseUid(userId);
+        firebaseUid = userId; // userId is the Firebase UID in this case
+      }
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Delete from PostgreSQL (use the PostgreSQL ID)
+      await this.userRepository.delete(user.id);
+
+      // Delete from Firebase Auth
+      if (firebaseUid) {
+        try {
+          await auth.deleteUser(firebaseUid);
+        } catch (authError) {
+          logger.warn('Failed to delete Firebase Auth user, continuing:', authError);
+        }
+      }
     } catch (error: any) {
       logger.error('Error deleting user:', error);
       throw new Error('Failed to delete user');
@@ -199,20 +204,8 @@ export class AuthService {
 
   async getAllUsers(limit: number = 50, offset: number = 0): Promise<{ users: User[]; total: number }> {
     try {
-      const usersSnapshot = await db
-        .collection('users')
-        .orderBy('createdAt', 'desc')
-        .limit(limit)
-        .offset(offset)
-        .get();
-
-      const totalSnapshot = await db.collection('users').count().get();
-      const total = totalSnapshot.data().count;
-
-      const users: User[] = usersSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<User, 'id'>),
-      }));
+      const users = await this.userRepository.findAll({}, limit, offset);
+      const total = await this.userRepository.count();
 
       return { users, total };
     } catch (error: any) {

@@ -1,9 +1,9 @@
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from './auth.middleware';
-import { db } from '../config/firebase.config';
 import { ResponseHelper } from '../utils/response';
 import { logger } from '../utils/logger';
 import { Module, Permission } from '../models/permission.model';
+import { UserRepository } from '../repositories/user.repository';
 
 export const checkPermission = (module: Module, permission: Permission) => {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -14,22 +14,22 @@ export const checkPermission = (module: Module, permission: Permission) => {
       }
 
       const userId = req.user.uid;
+      const userRepository = new UserRepository();
 
-      // Get user document
-      const userDoc = await db.collection('users').doc(userId).get();
+      // Get user from PostgreSQL
+      const user = await userRepository.findByFirebaseUid(userId);
 
-      if (!userDoc.exists) {
+      if (!user) {
         // User is authenticated but document doesn't exist - return 401 instead of 404
         // This indicates an authentication/setup issue, not a not-found issue
         ResponseHelper.error(res, 'USER_NOT_SETUP', 'User account not properly set up. Please contact administrator.', 401);
         return;
       }
 
-      const userData = userDoc.data();
-      const modulePermissions = userData?.modulePermissions || {};
+      const modulePermissions = user.modulePermissions || {};
 
       // Check if user has admin role (full access)
-      if (userData?.role === 'admin') {
+      if (user.role === 'admin') {
         next();
         return;
       }
@@ -67,15 +67,15 @@ export const requireAdmin = async (req: AuthenticatedRequest, res: Response, nex
     }
 
     const userId = req.user.uid;
-    const userDoc = await db.collection('users').doc(userId).get();
+    const userRepository = new UserRepository();
+    const user = await userRepository.findByFirebaseUid(userId);
 
-    if (!userDoc.exists) {
+    if (!user) {
       ResponseHelper.error(res, 'USER_NOT_SETUP', 'User account not properly set up. Please contact administrator.', 401);
       return;
     }
 
-    const userData = userDoc.data();
-    if (userData?.role !== 'admin') {
+    if (user.role !== 'admin') {
       logger.warn(`Admin access denied: User ${userId} attempted admin operation`);
       ResponseHelper.error(res, 'ADMIN_REQUIRED', 'Admin role required', 403);
       return;

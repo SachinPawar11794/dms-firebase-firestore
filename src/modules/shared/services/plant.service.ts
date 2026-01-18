@@ -1,39 +1,39 @@
-import { db } from '../../../config/firebase.config';
 import { Plant, CreatePlantDto, UpdatePlantDto } from '../models/plant.model';
-import { Timestamp } from 'firebase-admin/firestore';
 import { logger } from '../../../utils/logger';
+import { PlantRepository } from '../../../repositories/plant.repository';
 
 export class PlantService {
+  private plantRepository: PlantRepository;
+
+  constructor() {
+    this.plantRepository = new PlantRepository();
+  }
+
   async createPlant(plantData: CreatePlantDto, createdBy: string): Promise<Plant> {
     try {
       // Check if plant code already exists
-      const existingPlant = await db
-        .collection('plants')
-        .where('code', '==', plantData.code)
-        .limit(1)
-        .get();
-
-      if (!existingPlant.empty) {
+      const existingPlant = await this.plantRepository.findByCode(plantData.code);
+      if (existingPlant) {
         throw new Error('Plant code already exists');
       }
 
-      const now = Timestamp.now();
-
-      const plant: Omit<Plant, 'id'> = {
+      const plant = await this.plantRepository.createPlant({
         name: plantData.name,
         code: plantData.code,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
+        address: plantData.address,
+        city: plantData.city,
+        state: plantData.state,
+        country: plantData.country,
+        postalCode: plantData.postalCode,
+        contactPerson: plantData.contactPerson,
+        contactEmail: plantData.contactEmail,
+        contactPhone: plantData.contactPhone,
+        isActive: plantData.isActive !== undefined ? plantData.isActive : true,
         createdBy,
-      };
+        updatedBy: createdBy,
+      });
 
-      const docRef = await db.collection('plants').add(plant);
-
-      return {
-        id: docRef.id,
-        ...plant,
-      };
+      return plant;
     } catch (error: any) {
       logger.error('Error creating plant:', error);
       throw error;
@@ -42,16 +42,7 @@ export class PlantService {
 
   async getPlantById(plantId: string): Promise<Plant | null> {
     try {
-      const plantDoc = await db.collection('plants').doc(plantId).get();
-
-      if (!plantDoc.exists) {
-        return null;
-      }
-
-      return {
-        id: plantDoc.id,
-        ...(plantDoc.data() as Omit<Plant, 'id'>),
-      };
+      return await this.plantRepository.findById(plantId);
     } catch (error: any) {
       logger.error('Error getting plant:', error);
       throw new Error('Failed to get plant');
@@ -60,64 +51,33 @@ export class PlantService {
 
   async getAllPlants(activeOnly: boolean = false): Promise<Plant[]> {
     try {
-      let query: FirebaseFirestore.Query = db.collection('plants');
-
       if (activeOnly) {
-        query = query.where('isActive', '==', true);
+        return await this.plantRepository.findActive();
       }
-
-      query = query.orderBy('name', 'asc');
-
-      const snapshot = await query.get();
-
-      return snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Plant, 'id'>),
-      }));
+      return await this.plantRepository.findAll({}, undefined, undefined);
     } catch (error: any) {
       logger.error('Error getting plants:', error);
-      
-      // Check if it's a Firestore index error
-      if (error.code === 9 && error.details?.includes('index')) {
-        // Extract the index creation URL from error details
-        const indexUrlMatch = error.details.match(/https:\/\/console\.firebase\.google\.com[^\s]+/);
-        if (indexUrlMatch) {
-          const indexError = new Error('INDEX_REQUIRED');
-          (indexError as any).indexUrl = indexUrlMatch[0];
-          (indexError as any).originalError = error;
-          throw indexError;
-        }
-      }
-      
       throw new Error('Failed to get plants');
     }
   }
 
-  async updatePlant(plantId: string, plantData: UpdatePlantDto): Promise<Plant> {
+  async updatePlant(plantId: string, plantData: UpdatePlantDto, updatedBy?: string): Promise<Plant> {
     try {
       // If updating code, check for duplicates
       if (plantData.code) {
-        const existingPlant = await db
-          .collection('plants')
-          .where('code', '==', plantData.code)
-          .limit(1)
-          .get();
-
-        if (!existingPlant.empty && existingPlant.docs[0].id !== plantId) {
+        const existingPlant = await this.plantRepository.findByCode(plantData.code);
+        if (existingPlant && existingPlant.id !== plantId) {
           throw new Error('Plant code already exists');
         }
       }
 
-      const updateData: any = {
+      const updatedPlant = await this.plantRepository.updatePlant(plantId, {
         ...plantData,
-        updatedAt: Timestamp.now(),
-      };
+        updatedBy,
+      });
 
-      await db.collection('plants').doc(plantId).update(updateData);
-
-      const updatedPlant = await this.getPlantById(plantId);
       if (!updatedPlant) {
-        throw new Error('Plant not found after update');
+        throw new Error('Plant not found');
       }
 
       return updatedPlant;
@@ -129,9 +89,21 @@ export class PlantService {
 
   async deletePlant(plantId: string): Promise<void> {
     try {
-      await db.collection('plants').doc(plantId).delete();
+      // Check if plant is used by any users
+      const isUsed = await this.plantRepository.isUsedByUsers(plantId);
+      if (isUsed) {
+        throw new Error('Cannot delete plant: It is assigned to one or more users');
+      }
+
+      const deleted = await this.plantRepository.delete(plantId);
+      if (!deleted) {
+        throw new Error('Plant not found');
+      }
     } catch (error: any) {
       logger.error('Error deleting plant:', error);
+      if (error.message.includes('Cannot delete plant')) {
+        throw error;
+      }
       throw new Error('Failed to delete plant');
     }
   }

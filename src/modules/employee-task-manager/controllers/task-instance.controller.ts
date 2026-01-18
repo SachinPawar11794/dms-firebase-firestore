@@ -3,7 +3,7 @@ import { AuthenticatedRequest } from '../../../middleware/auth.middleware';
 import { taskInstanceService } from '../services/task-instance.service';
 import { ResponseHelper } from '../../../utils/response';
 import { CreateTaskInstanceDto, UpdateTaskInstanceDto, TaskInstanceQueryParams } from '../models/task-instance.model';
-import { db } from '../../../config/firebase.config';
+import { UserRepository } from '../../../repositories/user.repository';
 
 export class TaskInstanceController {
   async createTaskInstance(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -89,11 +89,11 @@ export class TaskInstanceController {
       }
 
       // Check permissions (user can only update their own tasks, unless admin/manager)
-      // Get user role from Firestore
+      // Get user role from PostgreSQL
       const userId = req.user!.uid;
-      const userDoc = await db.collection('users').doc(userId).get();
-      const userData = userDoc.exists ? userDoc.data() : null;
-      const userRole = userData?.role || 'employee';
+      const userRepository = new UserRepository();
+      const user = await userRepository.findByFirebaseUid(userId);
+      const userRole = user?.role || 'employee';
       
       if (taskInstance.assignedTo !== userId && userRole !== 'admin' && userRole !== 'manager') {
         ResponseHelper.error(res, 'FORBIDDEN', 'You can only update your own tasks', 403);
@@ -120,17 +120,17 @@ export class TaskInstanceController {
   async generateTasks(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       // Only admins and managers can trigger task generation
-      // Get user role from Firestore
+      // Get user role from PostgreSQL
       const userId = req.user!.uid;
-      const userDoc = await db.collection('users').doc(userId).get();
+      const userRepository = new UserRepository();
+      const user = await userRepository.findByFirebaseUid(userId);
       
-      if (!userDoc.exists) {
+      if (!user) {
         ResponseHelper.error(res, 'USER_NOT_FOUND', 'User not found', 404);
         return;
       }
 
-      const userData = userDoc.data();
-      const userRole = userData?.role || 'employee';
+      const userRole = user.role || 'employee';
       
       if (userRole !== 'admin' && userRole !== 'manager') {
         ResponseHelper.error(res, 'FORBIDDEN', 'Only admins and managers can generate tasks', 403);

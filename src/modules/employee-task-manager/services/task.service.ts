@@ -1,37 +1,33 @@
-import { db } from '../../../config/firebase.config';
 import { Task, CreateTaskDto, UpdateTaskDto, TaskQueryParams } from '../models/task.model';
 import { Timestamp } from 'firebase-admin/firestore';
 import { logger } from '../../../utils/logger';
+import { TaskRepository } from '../../../repositories/task.repository';
 
 export class TaskService {
+  private taskRepository: TaskRepository;
+
+  constructor() {
+    this.taskRepository = new TaskRepository();
+  }
+
   async createTask(taskData: CreateTaskDto, createdBy: string): Promise<Task> {
     try {
-      const now = Timestamp.now();
       const dueDate = taskData.dueDate instanceof Date
-        ? Timestamp.fromDate(taskData.dueDate)
-        : Timestamp.fromDate(new Date(taskData.dueDate));
+        ? taskData.dueDate
+        : new Date(taskData.dueDate);
 
-      const task: Omit<Task, 'id'> = {
+      const task = await this.taskRepository.createTask({
         title: taskData.title,
         description: taskData.description,
         assignedTo: taskData.assignedTo,
         assignedBy: taskData.assignedBy,
-        status: 'pending',
         priority: taskData.priority,
         dueDate,
-        createdAt: now,
-        updatedAt: now,
+        tags: taskData.tags,
         createdBy,
-        tags: taskData.tags || [],
-        attachments: [],
-      };
+      });
 
-      const docRef = await db.collection('tasks').add(task);
-
-      return {
-        id: docRef.id,
-        ...task,
-      };
+      return task;
     } catch (error: any) {
       logger.error('Error creating task:', error);
       throw new Error('Failed to create task');
@@ -40,16 +36,7 @@ export class TaskService {
 
   async getTaskById(taskId: string): Promise<Task | null> {
     try {
-      const taskDoc = await db.collection('tasks').doc(taskId).get();
-
-      if (!taskDoc.exists) {
-        return null;
-      }
-
-      return {
-        id: taskDoc.id,
-        ...(taskDoc.data() as Omit<Task, 'id'>),
-      };
+      return await this.taskRepository.findById(taskId);
     } catch (error: any) {
       logger.error('Error getting task:', error);
       throw new Error('Failed to get task');
@@ -58,38 +45,18 @@ export class TaskService {
 
   async getTasks(queryParams: TaskQueryParams): Promise<{ tasks: Task[]; total: number }> {
     try {
-      let query: FirebaseFirestore.Query = db.collection('tasks');
-
-      // Apply filters
-      if (queryParams.status) {
-        query = query.where('status', '==', queryParams.status);
-      }
-      if (queryParams.priority) {
-        query = query.where('priority', '==', queryParams.priority);
-      }
-      if (queryParams.assignedTo) {
-        query = query.where('assignedTo', '==', queryParams.assignedTo);
-      }
-      if (queryParams.assignedBy) {
-        query = query.where('assignedBy', '==', queryParams.assignedBy);
-      }
-
-      // Order by creation date
-      query = query.orderBy('createdAt', 'desc');
-
-      // Pagination
       const limit = queryParams.limit || 50;
       const page = queryParams.page || 1;
       const offset = (page - 1) * limit;
 
-      const tasksSnapshot = await query.limit(limit).offset(offset).get();
-      const totalSnapshot = await query.count().get();
-      const total = totalSnapshot.data().count;
+      const filters: any = {};
+      if (queryParams.status) filters.status = queryParams.status;
+      if (queryParams.priority) filters.priority = queryParams.priority;
+      if (queryParams.assignedTo) filters.assignedTo = queryParams.assignedTo;
+      if (queryParams.assignedBy) filters.assignedBy = queryParams.assignedBy;
 
-      const tasks: Task[] = tasksSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Task, 'id'>),
-      }));
+      const tasks = await this.taskRepository.findWithFilters(filters, limit, offset);
+      const total = await this.taskRepository.count(filters);
 
       return { tasks, total };
     } catch (error: any) {
@@ -100,10 +67,14 @@ export class TaskService {
 
   async updateTask(taskId: string, taskData: UpdateTaskDto): Promise<Task> {
     try {
-      const updateData: any = {
-        ...taskData,
-        updatedAt: Timestamp.now(),
-      };
+      const updateData: any = {};
+
+      if (taskData.title !== undefined) updateData.title = taskData.title;
+      if (taskData.description !== undefined) updateData.description = taskData.description;
+      if (taskData.assignedTo !== undefined) updateData.assignedTo = taskData.assignedTo;
+      if (taskData.status !== undefined) updateData.status = taskData.status;
+      if (taskData.priority !== undefined) updateData.priority = taskData.priority;
+      if (taskData.tags !== undefined) updateData.tags = taskData.tags;
 
       if (taskData.dueDate) {
         updateData.dueDate = taskData.dueDate instanceof Date
@@ -111,11 +82,9 @@ export class TaskService {
           : Timestamp.fromDate(new Date(taskData.dueDate));
       }
 
-      await db.collection('tasks').doc(taskId).update(updateData);
-
-      const updatedTask = await this.getTaskById(taskId);
+      const updatedTask = await this.taskRepository.updateTask(taskId, updateData);
       if (!updatedTask) {
-        throw new Error('Task not found after update');
+        throw new Error('Task not found');
       }
 
       return updatedTask;
@@ -127,14 +96,9 @@ export class TaskService {
 
   async updateTaskStatus(taskId: string, status: Task['status']): Promise<Task> {
     try {
-      await db.collection('tasks').doc(taskId).update({
-        status,
-        updatedAt: Timestamp.now(),
-      });
-
-      const updatedTask = await this.getTaskById(taskId);
+      const updatedTask = await this.taskRepository.updateTask(taskId, { status });
       if (!updatedTask) {
-        throw new Error('Task not found after update');
+        throw new Error('Task not found');
       }
 
       return updatedTask;
@@ -146,7 +110,10 @@ export class TaskService {
 
   async deleteTask(taskId: string): Promise<void> {
     try {
-      await db.collection('tasks').doc(taskId).delete();
+      const deleted = await this.taskRepository.delete(taskId);
+      if (!deleted) {
+        throw new Error('Task not found');
+      }
     } catch (error: any) {
       logger.error('Error deleting task:', error);
       throw new Error('Failed to delete task');

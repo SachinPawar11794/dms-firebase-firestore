@@ -1,11 +1,19 @@
-import { db } from '../../../config/firebase.config';
 import { TaskInstance, CreateTaskInstanceDto, UpdateTaskInstanceDto, TaskInstanceQueryParams } from '../models/task-instance.model';
 import { TaskMaster } from '../models/task-master.model';
 import { Timestamp } from 'firebase-admin/firestore';
 import { logger } from '../../../utils/logger';
 import { taskMasterService } from './task-master.service';
+import { TaskInstanceRepository } from '../../../repositories/task-instance.repository';
+import { TaskMasterRepository } from '../../../repositories/task-master.repository';
 
 export class TaskInstanceService {
+  private taskInstanceRepository: TaskInstanceRepository;
+  private taskMasterRepository: TaskMasterRepository;
+
+  constructor() {
+    this.taskInstanceRepository = new TaskInstanceRepository();
+    this.taskMasterRepository = new TaskMasterRepository();
+  }
   async createTaskInstance(taskInstanceData: CreateTaskInstanceDto, createdBy: string): Promise<TaskInstance> {
     try {
       // Get the task master to copy data
@@ -14,7 +22,6 @@ export class TaskInstanceService {
         throw new Error('Task master not found');
       }
 
-      const now = Timestamp.now();
       const scheduledDate = taskInstanceData.scheduledDate instanceof Date
         ? Timestamp.fromDate(taskInstanceData.scheduledDate)
         : Timestamp.fromDate(new Date(taskInstanceData.scheduledDate));
@@ -22,51 +29,22 @@ export class TaskInstanceService {
         ? Timestamp.fromDate(taskInstanceData.dueDate)
         : Timestamp.fromDate(new Date(taskInstanceData.dueDate));
 
-      const taskInstance: Omit<TaskInstance, 'id'> = {
+      const scheduledDateObj = scheduledDate instanceof Timestamp ? scheduledDate.toDate() : new Date(scheduledDate);
+      const dueDateObj = dueDate instanceof Timestamp ? dueDate.toDate() : new Date(dueDate);
+
+      const taskInstance = await this.taskInstanceRepository.createTaskInstance({
         taskMasterId: taskMaster.id,
         title: taskMaster.title,
         description: taskMaster.description,
-        plantId: taskMaster.plantId,
         assignedTo: taskMaster.assignedTo,
         assignedBy: taskMaster.assignedBy,
-        status: 'pending',
         priority: taskMaster.priority,
-        scheduledDate,
-        dueDate,
-        tags: taskMaster.tags || [],
-        estimatedDuration: taskMaster.estimatedDuration, // Required field
-        // Only include instructions if it exists
-        ...(taskMaster.instructions ? { instructions: taskMaster.instructions } : {}),
-        createdAt: now,
-        updatedAt: now,
+        dueDate: dueDateObj,
+        scheduledDate: scheduledDateObj,
         createdBy,
-      };
+      });
 
-      const docRef = await db.collection('taskInstances').add(taskInstance);
-
-      // Convert Timestamps to ISO strings for JSON serialization
-      const response: any = {
-        id: docRef.id,
-        ...taskInstance,
-      };
-      
-      if (response.scheduledDate instanceof Timestamp) {
-        response.scheduledDate = response.scheduledDate.toDate().toISOString();
-      }
-      if (response.dueDate instanceof Timestamp) {
-        response.dueDate = response.dueDate.toDate().toISOString();
-      }
-      if (response.completedAt instanceof Timestamp) {
-        response.completedAt = response.completedAt.toDate().toISOString();
-      }
-      if (response.createdAt instanceof Timestamp) {
-        response.createdAt = response.createdAt.toDate().toISOString();
-      }
-      if (response.updatedAt instanceof Timestamp) {
-        response.updatedAt = response.updatedAt.toDate().toISOString();
-      }
-      
-      return response;
+      return taskInstance;
     } catch (error: any) {
       logger.error('Error creating task instance:', error);
       throw new Error('Failed to create task instance');
@@ -75,37 +53,7 @@ export class TaskInstanceService {
 
   async getTaskInstanceById(taskInstanceId: string): Promise<TaskInstance | null> {
     try {
-      const taskInstanceDoc = await db.collection('taskInstances').doc(taskInstanceId).get();
-
-      if (!taskInstanceDoc.exists) {
-        return null;
-      }
-
-      const data = taskInstanceDoc.data() as Omit<TaskInstance, 'id'>;
-      // Convert Timestamps to ISO strings for JSON serialization
-      const instance: any = {
-        id: taskInstanceDoc.id,
-        ...data,
-      };
-      
-      // Convert Timestamp fields to ISO strings
-      if (instance.scheduledDate instanceof Timestamp) {
-        instance.scheduledDate = instance.scheduledDate.toDate().toISOString();
-      }
-      if (instance.dueDate instanceof Timestamp) {
-        instance.dueDate = instance.dueDate.toDate().toISOString();
-      }
-      if (instance.completedAt instanceof Timestamp) {
-        instance.completedAt = instance.completedAt.toDate().toISOString();
-      }
-      if (instance.createdAt instanceof Timestamp) {
-        instance.createdAt = instance.createdAt.toDate().toISOString();
-      }
-      if (instance.updatedAt instanceof Timestamp) {
-        instance.updatedAt = instance.updatedAt.toDate().toISOString();
-      }
-      
-      return instance;
+      return await this.taskInstanceRepository.findById(taskInstanceId);
     } catch (error: any) {
       logger.error('Error getting task instance:', error);
       throw new Error('Failed to get task instance');
@@ -114,187 +62,73 @@ export class TaskInstanceService {
 
   async getTaskInstances(queryParams: TaskInstanceQueryParams): Promise<{ taskInstances: TaskInstance[]; total: number }> {
     try {
-      let query: FirebaseFirestore.Query = db.collection('taskInstances');
-
-      // Apply filters - order matters for Firestore indexes
-      // Start with equality filters first
-      if (queryParams.assignedTo) {
-        query = query.where('assignedTo', '==', queryParams.assignedTo);
-      }
-      if (queryParams.taskMasterId) {
-        query = query.where('taskMasterId', '==', queryParams.taskMasterId);
-      }
-      if (queryParams.plantId) {
-        query = query.where('plantId', '==', queryParams.plantId);
-      }
-      if (queryParams.status) {
-        query = query.where('status', '==', queryParams.status);
-      }
-      if (queryParams.priority) {
-        query = query.where('priority', '==', queryParams.priority);
-      }
-
-      // Range filters (these must come after equality filters)
-      if (queryParams.scheduledDateFrom) {
-        const fromDate = queryParams.scheduledDateFrom instanceof Date
-          ? Timestamp.fromDate(queryParams.scheduledDateFrom)
-          : Timestamp.fromDate(new Date(queryParams.scheduledDateFrom));
-        query = query.where('scheduledDate', '>=', fromDate);
-      }
-      if (queryParams.scheduledDateTo) {
-        const toDate = queryParams.scheduledDateTo instanceof Date
-          ? Timestamp.fromDate(queryParams.scheduledDateTo)
-          : Timestamp.fromDate(new Date(queryParams.scheduledDateTo));
-        query = query.where('scheduledDate', '<=', toDate);
-      }
-
-      // Get total count with same filters
-      let total = 0;
-      try {
-        const countQuery = db.collection('taskInstances');
-        let countQueryBuilder: FirebaseFirestore.Query = countQuery;
-        if (queryParams.assignedTo) {
-          countQueryBuilder = countQueryBuilder.where('assignedTo', '==', queryParams.assignedTo);
-        }
-        if (queryParams.taskMasterId) {
-          countQueryBuilder = countQueryBuilder.where('taskMasterId', '==', queryParams.taskMasterId);
-        }
-        if (queryParams.plantId) {
-          countQueryBuilder = countQueryBuilder.where('plantId', '==', queryParams.plantId);
-        }
-        if (queryParams.status) {
-          countQueryBuilder = countQueryBuilder.where('status', '==', queryParams.status);
-        }
-        if (queryParams.priority) {
-          countQueryBuilder = countQueryBuilder.where('priority', '==', queryParams.priority);
-        }
-        if (queryParams.scheduledDateFrom) {
-          const fromDate = queryParams.scheduledDateFrom instanceof Date
-            ? Timestamp.fromDate(queryParams.scheduledDateFrom)
-            : Timestamp.fromDate(new Date(queryParams.scheduledDateFrom));
-          countQueryBuilder = countQueryBuilder.where('scheduledDate', '>=', fromDate);
-        }
-        if (queryParams.scheduledDateTo) {
-          const toDate = queryParams.scheduledDateTo instanceof Date
-            ? Timestamp.fromDate(queryParams.scheduledDateTo)
-            : Timestamp.fromDate(new Date(queryParams.scheduledDateTo));
-          countQueryBuilder = countQueryBuilder.where('scheduledDate', '<=', toDate);
-        }
-        const totalSnapshot = await countQueryBuilder.count().get();
-        total = totalSnapshot.data().count;
-      } catch (countError: any) {
-        logger.warn('Could not get count:', countError);
-        // Will calculate total from results if count fails
-      }
-
-      // Pagination
       const limit = queryParams.limit || 50;
       const page = queryParams.page || 1;
       const offset = (page - 1) * limit;
 
-      // Don't use orderBy with where clauses to avoid index requirements
-      // We'll sort in memory instead
-      // Get all matching documents (with reasonable limit to prevent memory issues)
-      const maxFetch = Math.max(limit * (page + 1), 500); // Fetch enough for pagination
-      const taskInstancesSnapshot = await query.limit(maxFetch).get();
-
-      let taskInstances: TaskInstance[] = taskInstancesSnapshot.docs.map((doc) => {
-        const data = doc.data() as Omit<TaskInstance, 'id'>;
-        // Convert Timestamps to ISO strings for JSON serialization
-        const instance: any = {
-          id: doc.id,
-          ...data,
-        };
-        
-        // Convert Timestamp fields to ISO strings
-        if (instance.scheduledDate instanceof Timestamp) {
-          instance.scheduledDate = instance.scheduledDate.toDate().toISOString();
-        }
-        if (instance.dueDate instanceof Timestamp) {
-          instance.dueDate = instance.dueDate.toDate().toISOString();
-        }
-        if (instance.completedAt instanceof Timestamp) {
-          instance.completedAt = instance.completedAt.toDate().toISOString();
-        }
-        if (instance.createdAt instanceof Timestamp) {
-          instance.createdAt = instance.createdAt.toDate().toISOString();
-        }
-        if (instance.updatedAt instanceof Timestamp) {
-          instance.updatedAt = instance.updatedAt.toDate().toISOString();
-        }
-        
-        return instance;
-      });
-
-      // Always sort in memory by scheduledDate (descending)
-      // Note: scheduledDate is now ISO string, so we can sort directly
-      taskInstances.sort((a, b) => {
-        const aDateStr = typeof a.scheduledDate === 'string' ? a.scheduledDate : (a.scheduledDate as Timestamp).toDate().toISOString();
-        const bDateStr = typeof b.scheduledDate === 'string' ? b.scheduledDate : (b.scheduledDate as Timestamp).toDate().toISOString();
-        const aDate = new Date(aDateStr).getTime();
-        const bDate = new Date(bDateStr).getTime();
-        return bDate - aDate; // Descending
-      });
-
-      // Update total if count query failed
-      if (total === 0) {
-        total = taskInstances.length;
+      const filters: any = {};
+      if (queryParams.assignedTo) filters.assignedTo = queryParams.assignedTo;
+      if (queryParams.taskMasterId) filters.taskMasterId = queryParams.taskMasterId;
+      if (queryParams.status) filters.status = queryParams.status;
+      
+      // Date filters
+      if (queryParams.scheduledDateFrom) {
+        filters.scheduledDateFrom = queryParams.scheduledDateFrom instanceof Date 
+          ? queryParams.scheduledDateFrom 
+          : new Date(queryParams.scheduledDateFrom);
+      }
+      if (queryParams.scheduledDateTo) {
+        filters.scheduledDateTo = queryParams.scheduledDateTo instanceof Date 
+          ? queryParams.scheduledDateTo 
+          : new Date(queryParams.scheduledDateTo);
+      }
+      if (queryParams.dueDateFrom) {
+        filters.dueDateFrom = queryParams.dueDateFrom instanceof Date 
+          ? queryParams.dueDateFrom 
+          : new Date(queryParams.dueDateFrom);
+      }
+      if (queryParams.dueDateTo) {
+        filters.dueDateTo = queryParams.dueDateTo instanceof Date 
+          ? queryParams.dueDateTo 
+          : new Date(queryParams.dueDateTo);
       }
 
-      // Apply pagination in memory
-      const startIndex = offset;
-      const endIndex = startIndex + limit;
-      const paginatedTasks = taskInstances.slice(startIndex, endIndex);
+      const taskInstances = await this.taskInstanceRepository.findWithFilters(filters, limit, offset);
+      const total = await this.taskInstanceRepository.count(filters);
 
-      return { taskInstances: paginatedTasks, total };
+      return { taskInstances, total };
     } catch (error: any) {
       logger.error('Error getting task instances:', error);
-      logger.error('Error details:', {
-        message: error.message,
-        code: error.code,
-        stack: error.stack,
-      });
-
-      // Check if this is a Firestore index error
-      if (error.code === 9 || error.message?.includes('index') || error.message?.includes('INDEX')) {
-        // Firestore index required error
-        // Extract index URL from error if available
-        const indexUrl = error.message?.match(/https:\/\/console\.firebase\.google\.com[^\s]+/)?.[0];
-        
-        const indexError: any = new Error('INDEX_REQUIRED');
-        indexError.indexUrl = indexUrl || `https://console.firebase.google.com/project/${process.env.FIREBASE_PROJECT_ID}/firestore/indexes`;
-        indexError.code = 'INDEX_REQUIRED';
-        throw indexError;
-      }
-
-      // Return more detailed error message
       throw new Error(`Failed to get task instances: ${error.message || 'Unknown error'}`);
     }
   }
 
   async updateTaskInstance(taskInstanceId: string, taskInstanceData: UpdateTaskInstanceDto): Promise<TaskInstance> {
     try {
-      const updateData: any = {
-        ...taskInstanceData,
-        updatedAt: Timestamp.now(),
-      };
+      const updateData: any = {};
 
-      if (taskInstanceData.completedAt) {
+      if (taskInstanceData.status !== undefined) {
+        updateData.status = taskInstanceData.status;
+      }
+      if (taskInstanceData.notes !== undefined) {
+        updateData.notes = taskInstanceData.notes;
+      }
+      if (taskInstanceData.actualDuration !== undefined) {
+        updateData.actualDuration = taskInstanceData.actualDuration;
+      }
+
+      // If status is completed and completedAt is not provided, set it to now
+      if (taskInstanceData.status === 'completed' && !taskInstanceData.completedAt) {
+        updateData.completedAt = Timestamp.now();
+      } else if (taskInstanceData.completedAt) {
         updateData.completedAt = taskInstanceData.completedAt instanceof Date
           ? Timestamp.fromDate(taskInstanceData.completedAt)
           : Timestamp.fromDate(new Date(taskInstanceData.completedAt));
       }
 
-      // If status is completed and completedAt is not provided, set it to now
-      if (taskInstanceData.status === 'completed' && !updateData.completedAt) {
-        updateData.completedAt = Timestamp.now();
-      }
-
-      await db.collection('taskInstances').doc(taskInstanceId).update(updateData);
-
-      const updatedTaskInstance = await this.getTaskInstanceById(taskInstanceId);
+      const updatedTaskInstance = await this.taskInstanceRepository.updateTaskInstance(taskInstanceId, updateData);
       if (!updatedTaskInstance) {
-        throw new Error('Task instance not found after update');
+        throw new Error('Task instance not found');
       }
 
       return updatedTaskInstance;
@@ -306,7 +140,10 @@ export class TaskInstanceService {
 
   async deleteTaskInstance(taskInstanceId: string): Promise<void> {
     try {
-      await db.collection('taskInstances').doc(taskInstanceId).delete();
+      const deleted = await this.taskInstanceRepository.delete(taskInstanceId);
+      if (!deleted) {
+        throw new Error('Task instance not found');
+      }
     } catch (error: any) {
       logger.error('Error deleting task instance:', error);
       throw new Error('Failed to delete task instance');
@@ -354,11 +191,10 @@ export class TaskInstanceService {
             'system'
           );
 
-          // Update lastGenerated timestamp directly in Firestore
-          await db.collection('taskMasters').doc(master.id).update({
+          // Update lastGenerated timestamp - use repository directly
+          await this.taskMasterRepository.updateTaskMaster(master.id, {
             lastGenerated: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-          });
+          } as any);
 
           generated++;
         } catch (error: any) {
@@ -487,23 +323,13 @@ export class TaskInstanceService {
       const endOfDay = new Date(scheduledDate);
       endOfDay.setHours(23, 59, 59, 999);
 
-      const snapshot = await db
-        .collection('taskInstances')
-        .where('taskMasterId', '==', taskMasterId)
-        .where('scheduledDate', '>=', Timestamp.fromDate(startOfDay))
-        .where('scheduledDate', '<=', Timestamp.fromDate(endOfDay))
-        .limit(1)
-        .get();
+      const instances = await this.taskInstanceRepository.findWithFilters({
+        taskMasterId,
+        scheduledDateFrom: startOfDay,
+        scheduledDateTo: endOfDay,
+      }, 1);
 
-      if (snapshot.empty) {
-        return null;
-      }
-
-      const doc = snapshot.docs[0];
-      return {
-        id: doc.id,
-        ...(doc.data() as Omit<TaskInstance, 'id'>),
-      };
+      return instances.length > 0 ? instances[0] : null;
     } catch (error: any) {
       logger.error('Error getting task instance for date:', error);
       return null;

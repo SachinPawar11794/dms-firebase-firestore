@@ -1,4 +1,3 @@
-import { db } from '../../../config/firebase.config';
 import {
   MaintenanceRequest,
   Equipment,
@@ -9,42 +8,33 @@ import {
 } from '../models/maintenance.model';
 import { Timestamp } from 'firebase-admin/firestore';
 import { logger } from '../../../utils/logger';
+import { MaintenanceRequestRepository } from '../../../repositories/maintenance-request.repository';
+import { EquipmentRepository } from '../../../repositories/equipment.repository';
 
 export class MaintenanceService {
+  private maintenanceRequestRepository: MaintenanceRequestRepository;
+  private equipmentRepository: EquipmentRepository;
+
+  constructor() {
+    this.maintenanceRequestRepository = new MaintenanceRequestRepository();
+    this.equipmentRepository = new EquipmentRepository();
+  }
   async createMaintenanceRequest(
-    requestData: CreateMaintenanceRequestDto
+    requestData: CreateMaintenanceRequestDto,
+    plantId?: string,
+    createdBy?: string
   ): Promise<MaintenanceRequest> {
     try {
-      const now = Timestamp.now();
-      const scheduledDate = requestData.scheduledDate
-        ? (requestData.scheduledDate instanceof Date
-            ? Timestamp.fromDate(requestData.scheduledDate)
-            : Timestamp.fromDate(new Date(requestData.scheduledDate)))
-        : null;
 
-      const request: Omit<MaintenanceRequest, 'id'> = {
+      return await this.maintenanceRequestRepository.createMaintenanceRequest({
         title: requestData.title,
         description: requestData.description,
         equipmentId: requestData.equipmentId,
-        equipmentName: requestData.equipmentName,
-        priority: requestData.priority,
-        status: 'pending',
-        assignedTo: '',
         requestedBy: requestData.requestedBy,
-        scheduledDate,
-        completedDate: null,
-        cost: 0,
-        notes: requestData.notes || '',
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      const docRef = await db.collection('maintenanceRequests').add(request);
-
-      return {
-        id: docRef.id,
-        ...request,
-      };
+        priority: requestData.priority,
+        plantId,
+        createdBy,
+      });
     } catch (error: any) {
       logger.error('Error creating maintenance request:', error);
       throw new Error('Failed to create maintenance request');
@@ -53,42 +43,27 @@ export class MaintenanceService {
 
   async getMaintenanceRequestById(requestId: string): Promise<MaintenanceRequest | null> {
     try {
-      const requestDoc = await db.collection('maintenanceRequests').doc(requestId).get();
-
-      if (!requestDoc.exists) {
-        return null;
-      }
-
-      return {
-        id: requestDoc.id,
-        ...(requestDoc.data() as Omit<MaintenanceRequest, 'id'>),
-      };
+      return await this.maintenanceRequestRepository.findById(requestId);
     } catch (error: any) {
       logger.error('Error getting maintenance request:', error);
       throw new Error('Failed to get maintenance request');
     }
   }
 
-  async getMaintenanceRequests(page: number = 1, limit: number = 50): Promise<{
+  async getMaintenanceRequests(page: number = 1, limit: number = 50, filters?: any): Promise<{
     requests: MaintenanceRequest[];
     total: number;
   }> {
     try {
       const offset = (page - 1) * limit;
-      const requestsSnapshot = await db
-        .collection('maintenanceRequests')
-        .orderBy('createdAt', 'desc')
-        .limit(limit)
-        .offset(offset)
-        .get();
+      const filterParams: any = {};
+      if (filters?.status) filterParams.status = filters.status;
+      if (filters?.requestedBy) filterParams.requestedBy = filters.requestedBy;
+      if (filters?.assignedTo) filterParams.assignedTo = filters.assignedTo;
+      if (filters?.equipmentId) filterParams.equipmentId = filters.equipmentId;
 
-      const totalSnapshot = await db.collection('maintenanceRequests').count().get();
-      const total = totalSnapshot.data().count;
-
-      const requests: MaintenanceRequest[] = requestsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<MaintenanceRequest, 'id'>),
-      }));
+      const requests = await this.maintenanceRequestRepository.findWithFilters(filterParams, limit, offset);
+      const total = await this.maintenanceRequestRepository.count(filterParams);
 
       return { requests, total };
     } catch (error: any) {
@@ -102,10 +77,15 @@ export class MaintenanceService {
     requestData: UpdateMaintenanceRequestDto
   ): Promise<MaintenanceRequest> {
     try {
-      const updateData: any = {
-        ...requestData,
-        updatedAt: Timestamp.now(),
-      };
+      const updateData: any = {};
+
+      if (requestData.title !== undefined) updateData.title = requestData.title;
+      if (requestData.description !== undefined) updateData.description = requestData.description;
+      if (requestData.priority !== undefined) updateData.priority = requestData.priority;
+      if (requestData.status !== undefined) updateData.status = requestData.status;
+      if (requestData.assignedTo !== undefined) updateData.assignedTo = requestData.assignedTo;
+      if (requestData.cost !== undefined) updateData.cost = requestData.cost;
+      if (requestData.notes !== undefined) updateData.notes = requestData.notes;
 
       if (requestData.scheduledDate) {
         updateData.scheduledDate = requestData.scheduledDate instanceof Date
@@ -119,11 +99,9 @@ export class MaintenanceService {
           : Timestamp.fromDate(new Date(requestData.completedDate));
       }
 
-      await db.collection('maintenanceRequests').doc(requestId).update(updateData);
-
-      const updatedRequest = await this.getMaintenanceRequestById(requestId);
+      const updatedRequest = await this.maintenanceRequestRepository.updateMaintenanceRequest(requestId, updateData);
       if (!updatedRequest) {
-        throw new Error('Maintenance request not found after update');
+        throw new Error('Maintenance request not found');
       }
 
       return updatedRequest;
@@ -135,41 +113,34 @@ export class MaintenanceService {
 
   async deleteMaintenanceRequest(requestId: string): Promise<void> {
     try {
-      await db.collection('maintenanceRequests').doc(requestId).delete();
+      const deleted = await this.maintenanceRequestRepository.delete(requestId);
+      if (!deleted) {
+        throw new Error('Maintenance request not found');
+      }
     } catch (error: any) {
       logger.error('Error deleting maintenance request:', error);
       throw new Error('Failed to delete maintenance request');
     }
   }
 
-  async createEquipment(equipmentData: CreateEquipmentDto): Promise<Equipment> {
+  async createEquipment(equipmentData: CreateEquipmentDto, plantId?: string, createdBy?: string): Promise<Equipment> {
     try {
-      const now = Timestamp.now();
       const warrantyExpiry = equipmentData.warrantyExpiry
         ? (equipmentData.warrantyExpiry instanceof Date
-            ? Timestamp.fromDate(equipmentData.warrantyExpiry)
-            : Timestamp.fromDate(new Date(equipmentData.warrantyExpiry)))
-        : null;
+            ? equipmentData.warrantyExpiry
+            : new Date(equipmentData.warrantyExpiry))
+        : undefined;
 
-      const equipment: Omit<Equipment, 'id'> = {
+      return await this.equipmentRepository.createEquipment({
         name: equipmentData.name,
         type: equipmentData.type,
         serialNumber: equipmentData.serialNumber,
         location: equipmentData.location,
-        status: 'operational',
-        lastMaintenanceDate: null,
-        nextMaintenanceDate: null,
         warrantyExpiry,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      const docRef = await db.collection('equipment').add(equipment);
-
-      return {
-        id: docRef.id,
-        ...equipment,
-      };
+        status: 'operational',
+        plantId,
+        createdBy,
+      });
     } catch (error: any) {
       logger.error('Error creating equipment:', error);
       throw new Error('Failed to create equipment');
@@ -178,39 +149,21 @@ export class MaintenanceService {
 
   async getEquipmentById(equipmentId: string): Promise<Equipment | null> {
     try {
-      const equipmentDoc = await db.collection('equipment').doc(equipmentId).get();
-
-      if (!equipmentDoc.exists) {
-        return null;
-      }
-
-      return {
-        id: equipmentDoc.id,
-        ...(equipmentDoc.data() as Omit<Equipment, 'id'>),
-      };
+      return await this.equipmentRepository.findById(equipmentId);
     } catch (error: any) {
       logger.error('Error getting equipment:', error);
       throw new Error('Failed to get equipment');
     }
   }
 
-  async getEquipment(page: number = 1, limit: number = 50): Promise<{ equipment: Equipment[]; total: number }> {
+  async getEquipment(page: number = 1, limit: number = 50, plantId?: string): Promise<{ equipment: Equipment[]; total: number }> {
     try {
       const offset = (page - 1) * limit;
-      const equipmentSnapshot = await db
-        .collection('equipment')
-        .orderBy('createdAt', 'desc')
-        .limit(limit)
-        .offset(offset)
-        .get();
+      const filters: any = {};
+      if (plantId) filters.plantId = plantId;
 
-      const totalSnapshot = await db.collection('equipment').count().get();
-      const total = totalSnapshot.data().count;
-
-      const equipment: Equipment[] = equipmentSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Equipment, 'id'>),
-      }));
+      const equipment = await this.equipmentRepository.findWithFilters(filters, limit, offset);
+      const total = await this.equipmentRepository.count(filters);
 
       return { equipment, total };
     } catch (error: any) {
@@ -221,10 +174,12 @@ export class MaintenanceService {
 
   async updateEquipment(equipmentId: string, equipmentData: UpdateEquipmentDto): Promise<Equipment> {
     try {
-      const updateData: any = {
-        ...equipmentData,
-        updatedAt: Timestamp.now(),
-      };
+      const updateData: any = {};
+
+      if (equipmentData.name !== undefined) updateData.name = equipmentData.name;
+      if (equipmentData.type !== undefined) updateData.type = equipmentData.type;
+      if (equipmentData.location !== undefined) updateData.location = equipmentData.location;
+      if (equipmentData.status !== undefined) updateData.status = equipmentData.status;
 
       if (equipmentData.lastMaintenanceDate) {
         updateData.lastMaintenanceDate = equipmentData.lastMaintenanceDate instanceof Date
@@ -244,11 +199,9 @@ export class MaintenanceService {
           : Timestamp.fromDate(new Date(equipmentData.warrantyExpiry));
       }
 
-      await db.collection('equipment').doc(equipmentId).update(updateData);
-
-      const updatedEquipment = await this.getEquipmentById(equipmentId);
+      const updatedEquipment = await this.equipmentRepository.updateEquipment(equipmentId, updateData);
       if (!updatedEquipment) {
-        throw new Error('Equipment not found after update');
+        throw new Error('Equipment not found');
       }
 
       return updatedEquipment;
@@ -260,7 +213,10 @@ export class MaintenanceService {
 
   async deleteEquipment(equipmentId: string): Promise<void> {
     try {
-      await db.collection('equipment').doc(equipmentId).delete();
+      const deleted = await this.equipmentRepository.delete(equipmentId);
+      if (!deleted) {
+        throw new Error('Equipment not found');
+      }
     } catch (error: any) {
       logger.error('Error deleting equipment:', error);
       throw new Error('Failed to delete equipment');

@@ -12,7 +12,7 @@ export class UserController {
       const password = req.body.password;
       const uid = req.body.uid; // Optional: if UID is provided, skip Auth creation
 
-      // If password is provided, create both Auth user and Firestore document
+      // If password is provided, create both Auth user and PostgreSQL user record
       if (password) {
         if (!userData.email || !userData.displayName || !password) {
           ResponseHelper.error(res, 'VALIDATION_ERROR', 'Email, display name, and password are required', 400);
@@ -33,7 +33,7 @@ export class UserController {
         return;
       }
 
-      // If UID is provided, create only Firestore document (for existing Auth users)
+      // If UID is provided, create only PostgreSQL user record (for existing Auth users)
       if (uid) {
         const user = await authService.createUser(userData, uid);
         ResponseHelper.success(res, user, 201);
