@@ -4,13 +4,16 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 // PostgreSQL connection configuration
+// Support both Unix socket (Cloud SQL Proxy) and TCP/IP connections
+const isUnixSocket = process.env.DB_HOST?.startsWith('/cloudsql/');
 const dbConfig: PoolConfig = {
   host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432', 10),
+  port: isUnixSocket ? undefined : parseInt(process.env.DB_PORT || '5432', 10),
   database: process.env.DB_NAME || 'dms_db',
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || '',
-  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  // SSL only for TCP/IP connections, not for Unix sockets
+  ssl: !isUnixSocket && process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
   max: parseInt(process.env.DB_POOL_MAX || '20', 10), // Maximum number of clients in the pool
   idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT || '30000', 10),
   connectionTimeoutMillis: parseInt(process.env.DB_POOL_CONNECTION_TIMEOUT || '2000', 10),

@@ -42,8 +42,12 @@ steps:
       - '10'
       - '--timeout'
       - '300'
+      - '--add-cloudsql-instances'
+      - 'dhananjaygroup-dms:asia-south1:dms-postgres'
       - '--set-env-vars'
-      - 'NODE_ENV=production,FIREBASE_PROJECT_ID=$PROJECT_ID,DB_HOST=35.244.20.105,DB_PORT=5432,DB_NAME=dms_db,DB_USER=dms_user,DB_SSL=true,DB_POOL_MAX=20,DB_POOL_IDLE_TIMEOUT=30000,DB_POOL_CONNECTION_TIMEOUT=2000'
+      - 'NODE_ENV=production,FIREBASE_PROJECT_ID=$PROJECT_ID,DB_HOST=/cloudsql/dhananjaygroup-dms:asia-south1:dms-postgres,DB_NAME=dms_db,DB_USER=dms_user,DB_POOL_MAX=20,DB_POOL_IDLE_TIMEOUT=30000,DB_POOL_CONNECTION_TIMEOUT=2000'
+      - '--update-secrets'
+      - 'DB_PASSWORD=db-password:latest'
     id: 'deploy-backend'
 
   # ============================================
